@@ -1,0 +1,42 @@
+/* ── Global resets ─────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; }
+body { margin: 0; overflow-x: hidden; }
+
+/* ── Responsive grid helpers ───────────────────────────── */
+.grid-2   { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.grid-3   { display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 16px; }
+.grid-4   { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+.flex-row { display: flex; gap: 12px; flex-wrap: wrap; }
+.kpi-row  { display: flex; gap: 12px; flex-wrap: wrap; }
+.kpi-row > * { flex: 1; min-width: 140px; }
+
+/* ── Navbar ────────────────────────────────────────────── */
+.nav-links { display: flex; gap: 4px; flex-wrap: wrap; }
+
+@media (max-width: 900px) {
+  .grid-3 { grid-template-columns: 1fr 1fr; }
+  .grid-2 { grid-template-columns: 1fr; }
+  .grid-4 { grid-template-columns: 1fr 1fr; }
+}
+
+@media (max-width: 600px) {
+  .grid-3   { grid-template-columns: 1fr; }
+  .grid-2   { grid-template-columns: 1fr; }
+  .grid-4   { grid-template-columns: 1fr 1fr; }
+  .nav-links { display: none; }
+  .kpi-row > * { min-width: 45%; }
+}
+
+/* ── Tables ────────────────────────────────────────────── */
+.table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+
+/* ── Charts ────────────────────────────────────────────── */
+.chart-box { background: #0d1a2b; border-radius: 10px; padding: 20px;
+  border: 1px solid rgba(0,212,255,0.1); }
+
+/* ── Mobile nav menu ───────────────────────────────────── */
+.mobile-menu-btn { display: none; cursor: pointer; }
+@media (max-width: 600px) {
+  .mobile-menu-btn { display: flex; }
+  .user-info { display: none; }
+}
