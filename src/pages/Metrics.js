@@ -62,7 +62,7 @@ export default function Metrics() {
             padding:"clamp(12px,3vw,20px)", marginBottom:20,
             border:"1px solid rgba(0,212,255,0.1)" }}>
             <h3 style={{ margin:"0 0 14px", fontSize:13, color:"#ccd6f6" }}>
-              Supply R² by Ward
+              Supply R² by Zone (27 total)
             </h3>
             <ResponsiveContainer width="100%" height={240}>
               <BarChart data={metrics} margin={{ bottom:50 }}>
@@ -84,29 +84,39 @@ export default function Metrics() {
             <table style={{ width:"100%", borderCollapse:"collapse", fontSize:12, minWidth:550 }}>
               <thead>
                 <tr style={{ borderBottom:"1px solid rgba(0,212,255,0.2)" }}>
-                  {["Ward","Ward Name","Supply R²","Supply MAE","Consumption R²","Leakage R²"].map(h => (
+                  {["Zone","Zone Name","Supply R²","Supply RMSE","Zone Type"].map(h => (
                     <th key={h} style={{ padding:"10px 12px", textAlign:"left",
                       color:C.supply, fontFamily:"monospace", fontSize:10, letterSpacing:1 }}>{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
-                {metrics.map((row, i) => (
+                {metrics.map((row, i) => {
+                  const zoneType = row.Ward_No >= 21
+                    ? (row.Ward_No === 26 ? "MIDC" : row.Ward_No === 27 ? "Village" : "CIDCO")
+                    : "PMC Ward";
+                  const typeColor = row.Ward_No >= 21
+                    ? (row.Ward_No === 26 ? "#ffb800" : row.Ward_No === 27 ? "#a855f7" : "#00ff88")
+                    : "#00c2ff";
+                  return (
                   <tr key={i} style={{ borderBottom:"1px solid rgba(255,255,255,0.04)",
                     background: i%2 ? C.surface2 : "transparent" }}>
                     <td style={{ padding:"9px 12px", fontFamily:"monospace", color:C.muted }}>{row.Ward_No}</td>
                     <td style={{ padding:"9px 12px", fontWeight:600 }}>{row.Ward_Name}</td>
-                    {[
-                      { v:row.Supply_R2?.toFixed(4),      c:row.Supply_R2>0.999?C.cons:C.warn },
-                      { v:row.Supply_MAE?.toFixed(5),     c:C.muted },
-                      { v:row.Consumption_R2?.toFixed(4), c:row.Consumption_R2>0.999?C.cons:C.warn },
-                      { v:row.Leakage_R2?.toFixed(4),     c:row.Leakage_R2>0.95?C.cons:C.warn },
-                    ].map((cell, ci) => (
-                      <td key={ci} style={{ padding:"9px 12px", color:cell.c,
-                        fontWeight:600, fontFamily:"monospace" }}>{cell.v}</td>
-                    ))}
+                    <td style={{ padding:"9px 12px", color:row.Supply_R2>0.98?C.cons:C.warn,
+                      fontWeight:600, fontFamily:"monospace" }}>{row.Supply_R2?.toFixed(4)}</td>
+                    <td style={{ padding:"9px 12px", color:C.muted,
+                      fontFamily:"monospace" }}>{row.Supply_RMSE?.toFixed(4)}</td>
+                    <td style={{ padding:"9px 12px" }}>
+                      <span style={{ background:`${typeColor}18`, color:typeColor,
+                        padding:"2px 8px", borderRadius:3, fontSize:10,
+                        border:`1px solid ${typeColor}44`, fontWeight:700 }}>
+                        {zoneType}
+                      </span>
+                    </td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -115,11 +125,11 @@ export default function Metrics() {
             borderRadius:8, padding:"clamp(16px,3vw,24px)" }}>
             <h3 style={{ margin:"0 0 12px", fontSize:13, color:C.supply }}>📝 Model Methodology</h3>
             <p style={{ color:C.muted, fontSize:13, lineHeight:1.7, margin:0 }}>
-              <b style={{ color:"white" }}>Algorithm:</b> Gradient Boosting Regressor · 400 estimators · learning rate 0.03<br/>
-              <b style={{ color:"white" }}>Key Insight:</b> Models predict the <i>daily change (diff)</i> — Final prediction = yesterday's value + predicted diff → R²&gt;0.999<br/>
+              <b style={{ color:"white" }}>Algorithm:</b> Gradient Boosting Regressor · 200–300 estimators · learning rate 0.05–0.08<br/>
+              <b style={{ color:"white" }}>Key Insight:</b> Rolling prediction uses last 14 days as lag features — enables 1 to 365-day forecasting with maintained accuracy<br/>
               <b style={{ color:"white" }}>Features:</b> 21 features — lag values (1,2,3,7 days), rolling means (3,7,14 day), calendar features, cyclical encodings<br/>
               <b style={{ color:"white" }}>Validation:</b> Chronological 80/20 train/test split · TimeSeriesSplit 5-fold CV<br/>
-              <b style={{ color:"white" }}>Data:</b> 181 days × 20 wards = 3,620 records (Sep 2025 – Feb 2026)
+              <b style={{ color:"white" }}>Data:</b> 181 days × 27 zones = 4,887 records (Sep 2025 – Feb 2026) · 20 PMC wards + 7 CIDCO/MIDC/Village zones · ~211 MLD total
             </p>
           </div>
         </>

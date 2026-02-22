@@ -130,8 +130,8 @@ export default function Dashboard() {
         <KpiCard label="Avg Daily Supply"   value={summary.Avg_Daily_Supply_MLD}   unit="MLD" color={C.supply} sub="Historical avg" />
         <KpiCard label="Avg Daily Leakage"  value={summary.Avg_Daily_Leakage_MLD}  unit="MLD" color={C.leak}
           sub={summary.Avg_Leakage_Percentage?`${summary.Avg_Leakage_Percentage}% of supply`:""} />
-        <KpiCard label="Worst Leakage Ward" value={summary.Highest_Leakage_Ward}          color={C.warn} sub={`Ward ${summary.Highest_Leakage_Ward_No}`} />
-        <KpiCard label="Model R²"           value={summary.Model_Accuracy?.City_Supply_R2} color={C.cons} sub="Gradient Boosting" />
+        <KpiCard label="Worst Leakage Zone" value={summary.Highest_Leakage_Ward}          color={C.warn} sub={`Zone ${summary.Highest_Leakage_Ward_No}`} />
+        <KpiCard label="Model R²"           value={summary.Model_Accuracy?.City_Supply_R2} color={C.cons} sub="27 Zones · Gradient Boosting" />
       </div>
 
       {error && (
@@ -169,7 +169,7 @@ export default function Dashboard() {
         {scanning && (
           <div style={{ display:"flex", alignItems:"center", gap:8, color:C.warn, fontSize:12 }}>
             <span style={{ display:"inline-block", animation:"spin 1s linear infinite" }}>⚙️</span>
-            Scanning all 20 wards for leakage alerts...
+            Scanning all 27 zones for leakage alerts...
           </div>
         )}
 
