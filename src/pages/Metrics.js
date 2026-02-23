@@ -39,8 +39,8 @@ export default function Metrics() {
         {[
           { label:"City Supply R²",      value:acc.City_Supply_R2,      color:C.supply },
           { label:"City Consumption R²", value:acc.City_Consumption_R2, color:C.cons },
-          { label:"City Leakage R²",     value:acc.City_Leakage_R2,     color:C.leak },
-          { label:"Supply MAE",          value:acc.City_Supply_MAE ? `${acc.City_Supply_MAE?.toFixed(4)} MLD` : null, color:C.warn },
+          { label:"City Supply RMSE",    value:acc.City_Supply_RMSE ? `${acc.City_Supply_RMSE?.toFixed(4)} MLD` : null, color:C.leak },
+          { label:"Total Zones",         value:"27 Zones",              color:C.warn },
         ].map(k => (
           <div key={k.label} style={{ background:C.surface,
             border:`1px solid rgba(0,212,255,0.12)`,
