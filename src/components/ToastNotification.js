@@ -1,85 +1,96 @@
-/**
- * ToastNotification — floating toast popups (top-right corner)
- * Separate from the notification bell system.
- * Used for real-time feedback as ward scans complete.
- */
-import { useState, useEffect, useCallback } from "react";
+// Toast notification system
+// showToast(message, level) — callable from anywhere
 
-const TOAST_EVENT = "panvel-toast";
+let _toastContainer = null;
 
-export function showToast(message, level = "INFO") {
-  window.dispatchEvent(new CustomEvent(TOAST_EVENT, {
-    detail: { message, level, id: Date.now() + Math.random() }
-  }));
-}
-
-const LEVEL_CFG = {
-  CRITICAL: { color:"#ff2d55", bg:"rgba(255,45,85,0.15)",  border:"rgba(255,45,85,0.5)",  icon:"🚨" },
-  HIGH:     { color:"#ff4d6d", bg:"rgba(255,77,109,0.12)", border:"rgba(255,77,109,0.4)", icon:"⚠️" },
-  MODERATE: { color:"#ffb800", bg:"rgba(255,184,0,0.12)",  border:"rgba(255,184,0,0.4)",  icon:"⚡" },
-  INFO:     { color:"#00c2ff", bg:"rgba(0,194,255,0.1)",   border:"rgba(0,194,255,0.3)",  icon:"ℹ️" },
-  SUCCESS:  { color:"#00ff88", bg:"rgba(0,255,136,0.1)",   border:"rgba(0,255,136,0.3)",  icon:"✅" },
+const LEVEL_COLORS = {
+  CRITICAL: { bg: "rgba(255,45,85,0.95)",   border: "#ff2d55", icon: "🚨" },
+  HIGH:     { bg: "rgba(255,77,109,0.92)",   border: "#ff4d6d", icon: "⚠️" },
+  MODERATE: { bg: "rgba(255,184,0,0.92)",    border: "#ffb800", icon: "🔔" },
+  NORMAL:   { bg: "rgba(0,255,136,0.88)",    border: "#00ff88", icon: "✅" },
+  SUCCESS:  { bg: "rgba(0,194,255,0.88)",    border: "#00c2ff", icon: "💧" },
+  ERROR:    { bg: "rgba(255,77,109,0.92)",   border: "#ff4d6d", icon: "❌" },
 };
 
-export default function ToastNotification() {
-  const [toasts, setToasts] = useState([]);
+function ensureContainer() {
+  if (_toastContainer) return _toastContainer;
+  const div = document.createElement("div");
+  div.id = "toast-container";
+  div.style.cssText = `
+    position: fixed;
+    bottom: 24px;
+    right: 24px;
+    z-index: 99999;
+    display: flex;
+    flex-direction: column-reverse;
+    gap: 10px;
+    max-width: 340px;
+    pointer-events: none;
+  `;
+  document.body.appendChild(div);
+  _toastContainer = div;
+  return div;
+}
 
-  const remove = useCallback((id) => {
-    setToasts(prev => prev.filter(t => t.id !== id));
-  }, []);
+export function showToast(message, level = "NORMAL", duration = 4000) {
+  const container = ensureContainer();
+  const style     = LEVEL_COLORS[level] || LEVEL_COLORS.NORMAL;
 
-  useEffect(() => {
-    const handler = (e) => {
-      const toast = { ...e.detail };
-      setToasts(prev => [toast, ...prev].slice(0, 5));
-      const dur = e.detail.level === "CRITICAL" ? 7000 : 4500;
-      setTimeout(() => remove(toast.id), dur);
-    };
-    window.addEventListener(TOAST_EVENT, handler);
-    return () => window.removeEventListener(TOAST_EVENT, handler);
-  }, [remove]);
+  const toast = document.createElement("div");
+  toast.style.cssText = `
+    background: ${style.bg};
+    border: 1px solid ${style.border};
+    border-radius: 8px;
+    padding: 12px 16px;
+    color: white;
+    font-family: 'Syne', sans-serif;
+    font-size: 13px;
+    font-weight: 600;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+    pointer-events: auto;
+    cursor: pointer;
+    animation: slideIn 0.3s ease;
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    backdrop-filter: blur(8px);
+  `;
 
-  if (!toasts.length) return null;
+  const icon = document.createElement("span");
+  icon.textContent = style.icon;
+  icon.style.fontSize = "16px";
 
-  return (
-    <>
-      <style>{`
-        @keyframes slideInToast {
-          from { opacity:0; transform:translateX(30px) scale(0.95); }
-          to   { opacity:1; transform:translateX(0) scale(1); }
-        }
-      `}</style>
-      <div style={{ position:"fixed", top:70, right:16, zIndex:9999,
-        display:"flex", flexDirection:"column", gap:8,
-        maxWidth:"min(360px, calc(100vw - 32px))", pointerEvents:"none" }}>
-        {toasts.map(t => {
-          const cfg = LEVEL_CFG[t.level] || LEVEL_CFG.INFO;
-          return (
-            <div key={t.id} style={{ background:cfg.bg,
-              border:`1px solid ${cfg.border}`, borderLeft:`4px solid ${cfg.color}`,
-              borderRadius:8, padding:"11px 14px",
-              backdropFilter:"blur(12px)",
-              boxShadow:`0 4px 20px rgba(0,0,0,0.4), 0 0 10px ${cfg.color}22`,
-              animation:"slideInToast 0.3s ease",
-              display:"flex", gap:9, alignItems:"flex-start",
-              pointerEvents:"all" }}>
-              <span style={{ fontSize:16, flexShrink:0, marginTop:1 }}>{cfg.icon}</span>
-              <div style={{ flex:1, minWidth:0 }}>
-                <div style={{ color:cfg.color, fontWeight:700,
-                  fontSize:10, letterSpacing:1, marginBottom:2 }}>
-                  {t.level}
-                </div>
-                <div style={{ color:"white", fontSize:12, lineHeight:1.5,
-                  wordBreak:"break-word" }}>{t.message}</div>
-              </div>
-              <button onClick={() => remove(t.id)}
-                style={{ background:"none", border:"none", color:"#6a8aaa",
-                  cursor:"pointer", fontSize:13, padding:"0 0 0 4px",
-                  flexShrink:0, lineHeight:1 }}>✕</button>
-            </div>
-          );
-        })}
-      </div>
-    </>
-  );
+  const text = document.createElement("span");
+  text.textContent = message;
+
+  toast.appendChild(icon);
+  toast.appendChild(text);
+
+  // Click to dismiss
+  toast.onclick = () => toast.remove();
+
+  container.appendChild(toast);
+
+  // Add CSS animation if not already added
+  if (!document.getElementById("toast-style")) {
+    const styleEl = document.createElement("style");
+    styleEl.id = "toast-style";
+    styleEl.textContent = `
+      @keyframes slideIn {
+        from { transform: translateX(120%); opacity: 0; }
+        to   { transform: translateX(0);   opacity: 1; }
+      }
+      @keyframes slideOut {
+        from { transform: translateX(0);   opacity: 1; }
+        to   { transform: translateX(120%); opacity: 0; }
+      }
+    `;
+    document.head.appendChild(styleEl);
+  }
+
+  // Auto remove
+  setTimeout(() => {
+    toast.style.animation = "slideOut 0.3s ease forwards";
+    setTimeout(() => toast.remove(), 300);
+  }, duration);
 }

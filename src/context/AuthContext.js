@@ -1,60 +1,38 @@
 import { createContext, useContext, useState, useEffect } from "react";
-import axios from "axios";
 
 const AuthContext = createContext(null);
-const API = process.env.REACT_APP_API_URL || "http://127.0.0.1:5000";
 
 export function AuthProvider({ children }) {
-  const [user, setUser]     = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [user, setUser]   = useState(null);
+  const [ready, setReady] = useState(false);
 
-  // On app start — check if token already saved in localStorage
   useEffect(() => {
-    const token = localStorage.getItem("wt_token");
-    const name  = localStorage.getItem("wt_name");
-    const email = localStorage.getItem("wt_email");
-    if (token && name) {
-      setUser({ token, name, email });
-      axios.defaults.headers.common["Authorization"] = `Bearer ${token}`;
-    }
-    setLoading(false);
+    try {
+      const stored = localStorage.getItem("wma_user");
+      if (stored) setUser(JSON.parse(stored));
+    } catch (_) {}
+    setReady(true);
   }, []);
 
-  const login = async (email, password) => {
-    const res = await axios.post(`${API}/auth/login`, { email, password });
-    const { token, name } = res.data;
-    localStorage.setItem("wt_token", token);
-    localStorage.setItem("wt_name",  name);
-    localStorage.setItem("wt_email", email);
-    axios.defaults.headers.common["Authorization"] = `Bearer ${token}`;
-    setUser({ token, name, email });
-    return res.data;
-  };
-
-  const register = async (name, email, password) => {
-    const res = await axios.post(`${API}/auth/register`, { name, email, password });
-    const { token } = res.data;
-    localStorage.setItem("wt_token", token);
-    localStorage.setItem("wt_name",  name);
-    localStorage.setItem("wt_email", email);
-    axios.defaults.headers.common["Authorization"] = `Bearer ${token}`;
-    setUser({ token, name, email });
-    return res.data;
+  const login = (userData) => {
+    setUser(userData);
+    localStorage.setItem("wma_user", JSON.stringify(userData));
   };
 
   const logout = () => {
-    localStorage.removeItem("wt_token");
-    localStorage.removeItem("wt_name");
-    localStorage.removeItem("wt_email");
-    delete axios.defaults.headers.common["Authorization"];
     setUser(null);
+    localStorage.removeItem("wma_user");
   };
 
   return (
-    <AuthContext.Provider value={{ user, login, register, logout, loading }}>
+    <AuthContext.Provider value={{ user, login, logout, ready }}>
       {children}
     </AuthContext.Provider>
   );
 }
 
-export const useAuth = () => useContext(AuthContext);
+export function useAuth() {
+  return useContext(AuthContext);
+}
+
+export default AuthContext;

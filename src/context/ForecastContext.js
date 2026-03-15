@@ -1,36 +1,25 @@
-/**
- * ForecastContext — shared forecast state across Dashboard ↔ Analytics
- * When user predicts on Dashboard, Analytics page reads the same data.
- */
-import { createContext, useContext, useState } from "react";
+import { createContext, useContext, useState, useCallback } from "react";
 
 const ForecastContext = createContext(null);
 
 export function ForecastProvider({ children }) {
-  const [cityForecast, setCityForecast] = useState(null); // array of prediction rows
-  const [forecastDays, setForecastDays] = useState(null); // number of days selected
-  const [forecastedAt, setForecastedAt] = useState(null); // timestamp of last predict
+  const [forecastData, setForecastData] = useState([]);
+  const [forecastDays, setForecastDays] = useState(null);
 
-  const updateForecast = (data, days) => {
-    setCityForecast(data);
+  const updateForecast = useCallback((data, days) => {
+    setForecastData(data);
     setForecastDays(days);
-    setForecastedAt(new Date());
-  };
-
-  const clearForecast = () => {
-    setCityForecast(null);
-    setForecastDays(null);
-    setForecastedAt(null);
-  };
+  }, []);
 
   return (
-    <ForecastContext.Provider value={{
-      cityForecast, forecastDays, forecastedAt,
-      updateForecast, clearForecast
-    }}>
+    <ForecastContext.Provider value={{ forecastData, forecastDays, updateForecast }}>
       {children}
     </ForecastContext.Provider>
   );
 }
 
-export const useForecast = () => useContext(ForecastContext);
+export function useForecast() {
+  return useContext(ForecastContext);
+}
+
+export default ForecastContext;
