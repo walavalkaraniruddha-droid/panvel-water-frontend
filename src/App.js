@@ -1,12 +1,15 @@
 import React, { useState, useEffect, useCallback, createContext, useContext } from "react";
 import axios from "axios";
 import {
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
-  ResponsiveContainer, Area, AreaChart,
+  AreaChart, Area, BarChart, Bar,
+  XAxis, YAxis, CartesianGrid, Tooltip, Legend,
+  ResponsiveContainer, Cell,
+  PieChart, Pie, RadialBarChart, RadialBar,
+  LineChart, Line, ReferenceLine,
 } from "recharts";
 
 // ─────────────────────────────────────────────────────────────
-// CONFIG  (same as original)
+// CONFIG
 // ─────────────────────────────────────────────────────────────
 const API = process.env.REACT_APP_API_URL || "http://127.0.0.1:5000";
 
@@ -21,13 +24,24 @@ const C = {
   muted:       "#6a8aaa",
 };
 
+const HORIZON_OPTIONS = [
+  { label: "Next 1 Day",    days: 1   },
+  { label: "Next 7 Days",   days: 7   },
+  { label: "Next 14 Days",  days: 14  },
+  { label: "Next 30 Days",  days: 30  },
+  { label: "Next 60 Days",  days: 60  },
+  { label: "Next 90 Days",  days: 90  },
+  { label: "Next 180 Days", days: 180 },
+  { label: "Next 1 Year",   days: 365 },
+];
+
 // ─────────────────────────────────────────────────────────────
 // AUTH CONTEXT
 // ─────────────────────────────────────────────────────────────
 const AuthContext = createContext(null);
 
 function AuthProvider({ children }) {
-  const [user, setUser]   = useState(null);
+  const [user,  setUser]  = useState(null);
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
@@ -51,14 +65,21 @@ function AuthProvider({ children }) {
 function useAuth() { return useContext(AuthContext); }
 
 // ─────────────────────────────────────────────────────────────
-// GLOBAL STYLES  (injected once)
+// GLOBAL STYLES
 // ─────────────────────────────────────────────────────────────
 const GLOBAL_CSS = `
   @import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&display=swap');
   * { box-sizing: border-box; }
   body { margin: 0; background: #060c14; }
-  @keyframes spin   { to { transform: rotate(360deg); } }
-  @keyframes fadeIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:translateY(0); } }
+  @keyframes spin    { to { transform: rotate(360deg); } }
+  @keyframes fadeIn  { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:translateY(0); } }
+  @keyframes bellPulse {
+    0%,100% { transform:scale(1) rotate(0deg); }
+    20%     { transform:scale(1.15) rotate(-8deg); }
+    40%     { transform:scale(1.15) rotate(8deg); }
+    60%     { transform:scale(1.1) rotate(-4deg); }
+    80%     { transform:scale(1.05) rotate(0deg); }
+  }
   select, button, input { font-family: 'Syne', sans-serif; }
   ::-webkit-scrollbar { width: 6px; height: 6px; }
   ::-webkit-scrollbar-track { background: #0d1a2b; }
@@ -68,7 +89,7 @@ const GLOBAL_CSS = `
 `;
 
 // ─────────────────────────────────────────────────────────────
-// SHARED COMPONENTS  (identical style to originals)
+// SHARED COMPONENTS
 // ─────────────────────────────────────────────────────────────
 function KpiCard({ label, value, unit, color, sub }) {
   return (
@@ -76,19 +97,17 @@ function KpiCard({ label, value, unit, color, sub }) {
       background: C.surface,
       border: `1px solid rgba(0,212,255,0.15)`,
       borderTop: `2px solid ${color}`,
-      borderRadius: 8,
-      padding: "18px 20px",
-      flex: 1,
-      minWidth: 150,
+      borderRadius: 8, padding: "16px 18px",
+      flex: 1, minWidth: 140,
     }}>
-      <div style={{ color: C.muted, fontSize: 11, letterSpacing: 2, textTransform: "uppercase", marginBottom: 6 }}>
+      <div style={{ color: C.muted, fontSize: 10, letterSpacing: 2, textTransform: "uppercase", marginBottom: 6 }}>
         {label}
       </div>
-      <div style={{ color, fontSize: "1.8rem", fontWeight: 700, fontFamily: "monospace" }}>
+      <div style={{ color, fontSize: "clamp(1.2rem,3vw,1.7rem)", fontWeight: 700, fontFamily: "monospace" }}>
         {value !== undefined && value !== null ? `${value}` : "—"}
-        {unit && <span style={{ fontSize: "0.9rem", marginLeft: 4 }}>{unit}</span>}
+        {unit && <span style={{ fontSize: "0.8rem", marginLeft: 4 }}>{unit}</span>}
       </div>
-      {sub && <div style={{ color: C.muted, fontSize: 12, marginTop: 4 }}>{sub}</div>}
+      {sub && <div style={{ color: C.muted, fontSize: 11, marginTop: 4 }}>{sub}</div>}
     </div>
   );
 }
@@ -101,17 +120,6 @@ function ErrorBanner({ msg }) {
       color: "#ff4d6d", padding: "12px 20px", borderRadius: 8,
       marginBottom: 20, fontFamily: "monospace", fontSize: 13,
     }}>⚠ {msg}</div>
-  );
-}
-
-function OkBanner({ msg }) {
-  if (!msg) return null;
-  return (
-    <div style={{
-      background: "rgba(0,255,136,0.1)", border: "1px solid rgba(0,255,136,0.35)",
-      color: "#00ff88", padding: "12px 20px", borderRadius: 8,
-      marginBottom: 16, fontSize: 13,
-    }}>✓ {msg}</div>
   );
 }
 
@@ -128,8 +136,8 @@ function Spinner() {
   );
 }
 
-function CustomTooltip({ active, payload, label }) {
-  if (!active || !payload?.length) return null;
+const CustomTooltip = ({ active, payload, label }) => {
+  if (!active || !payload || !payload.length) return null;
   return (
     <div style={{
       background: C.surface2, border: "1px solid rgba(0,212,255,0.2)",
@@ -138,200 +146,179 @@ function CustomTooltip({ active, payload, label }) {
       <div style={{ color: "white", fontWeight: 700, marginBottom: 6 }}>{label}</div>
       {payload.map((p, i) => (
         <div key={i} style={{ color: p.color, marginBottom: 3 }}>
-          {p.name}: <b>{typeof p.value === "number" ? p.value.toFixed(3) : p.value}</b> MLD
+          {p.name}: <b>{typeof p.value === "number" ? p.value.toFixed(3) : p.value}</b>
         </div>
       ))}
     </div>
   );
-}
+};
 
 // ─────────────────────────────────────────────────────────────
-// NAVBAR  (original "PANVEL WATER" style, name updated)
+// NAVBAR  (original sticky dark design)
 // ─────────────────────────────────────────────────────────────
 function Navbar({ tab, setTab }) {
   const { user, logout } = useAuth();
   const isAdmin = user?.role === "admin";
 
-  const baseTabs = [
+  const NAV_ITEMS = [
     { id: "city",       label: "🏙 City"       },
-    { id: "ward",       label: "🏘 Ward"        },
-    { id: "historical", label: "🗃 Historical"  },
-    { id: "metrics",    label: "📊 Metrics"     },
-    { id: "analytics",  label: "📈 Analytics"   },
+    { id: "ward",       label: "🏘 Ward"       },
+    { id: "historical", label: "📅 Historical" },
+    { id: "metrics",    label: "📊 Metrics"    },
+    { id: "analytics",  label: "📈 Analytics"  },
+    { id: "datafiles",  label: "📁 Data Files" },
+    ...(isAdmin ? [
+      { id: "upload", label: "⬆ Upload" },
+      { id: "users",  label: "👥 Users"  },
+    ] : []),
   ];
-  const adminTabs = [
-    { id: "upload", label: "⬆ Upload" },
-    { id: "users",  label: "👥 Users"  },
-  ];
-  const allTabs = isAdmin ? [...baseTabs, ...adminTabs] : baseTabs;
 
   return (
     <nav style={{
-      display: "flex", alignItems: "center", justifyContent: "space-between",
-      padding: "0 24px", height: 52,
-      background: C.surface,
-      borderBottom: "1px solid rgba(0,212,255,0.12)",
-      position: "sticky", top: 0, zIndex: 100,
-      gap: 12,
+      background: "rgba(6,12,20,0.98)",
+      borderBottom: "1px solid rgba(0,194,255,0.15)",
+      backdropFilter: "blur(12px)",
+      position: "sticky", top: 0, zIndex: 1000,
+      padding: "0 20px",
     }}>
-      {/* Logo — same original cyan style */}
-      <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0, cursor: "pointer" }}
-        onClick={() => setTab("city")}>
-        <span style={{ fontSize: 22 }}>💧</span>
-        <span style={{
-          fontWeight: 800, fontSize: 15, letterSpacing: 2,
-          color: C.supply, textTransform: "uppercase",
-        }}>
-          WATER MANAGEMENT
-        </span>
-      </div>
+      <div style={{
+        maxWidth: 1400, margin: "0 auto",
+        display: "flex", alignItems: "center",
+        justifyContent: "space-between", height: 58,
+      }}>
 
-      {/* Nav tabs */}
-      <div style={{ display: "flex", gap: 2, overflow: "auto" }}>
-        {allTabs.map(t => (
-          <button key={t.id} onClick={() => setTab(t.id)} style={{
-            background: tab === t.id ? "rgba(0,194,255,0.12)" : "transparent",
-            border: tab === t.id ? "1px solid rgba(0,194,255,0.35)" : "1px solid transparent",
-            color: tab === t.id ? C.supply : C.muted,
-            borderRadius: 5, padding: "6px 12px",
-            fontSize: 12, fontWeight: 600, cursor: "pointer",
-            whiteSpace: "nowrap", transition: "all 0.18s",
-          }}>{t.label}</button>
-        ))}
-      </div>
-
-      {/* Right: user info + logout */}
-      <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
-        {/* Role badge */}
-        <span style={{
-          background: isAdmin ? "rgba(168,85,247,0.15)" : "rgba(0,194,255,0.1)",
-          color: isAdmin ? "#a855f7" : C.supply,
-          border: `1px solid ${isAdmin ? "rgba(168,85,247,0.4)" : "rgba(0,194,255,0.3)"}`,
-          fontSize: 10, fontWeight: 700, letterSpacing: 1.5,
-          padding: "3px 10px", borderRadius: 20, textTransform: "uppercase",
-        }}>
-          {isAdmin ? "⚙ ADMIN" : "🎓 STUDENT"}
-        </span>
-        <div style={{ textAlign: "right" }}>
-          <div style={{ color: "white", fontSize: 12, fontWeight: 700 }}>{user?.name}</div>
-          <div style={{ color: C.muted, fontSize: 10 }}>{user?.email}</div>
+        {/* Logo */}
+        <div style={{
+          display: "flex", alignItems: "center", gap: 8, flexShrink: 0, cursor: "pointer",
+        }} onClick={() => setTab("city")}>
+          <span style={{ fontSize: 20 }}>💧</span>
+          <span style={{
+            color: "#00c2ff", fontWeight: 800, fontSize: 13,
+            fontFamily: "monospace", letterSpacing: 1,
+          }}>WATER MANAGEMENT</span>
         </div>
-        <button onClick={logout} style={{
-          background: "rgba(255,77,109,0.1)", border: "1px solid rgba(255,77,109,0.4)",
-          color: "#ff4d6d", borderRadius: 5, padding: "6px 14px",
-          fontSize: 12, fontWeight: 700, cursor: "pointer",
-        }}>Logout</button>
+
+        {/* Nav links */}
+        <div style={{ display: "flex", gap: 4, alignItems: "center", flexWrap: "wrap" }}>
+          {NAV_ITEMS.map(t => (
+            <button key={t.id} onClick={() => setTab(t.id)} style={{
+              padding: "6px 10px",
+              background: tab === t.id ? "rgba(0,212,255,0.12)" : "transparent",
+              border: tab === t.id ? "1px solid rgba(0,212,255,0.3)" : "1px solid transparent",
+              borderRadius: 5, color: tab === t.id ? C.supply : C.muted,
+              fontWeight: 600, fontSize: 12, cursor: "pointer", transition: "all 0.2s",
+              whiteSpace: "nowrap",
+            }}>{t.label}</button>
+          ))}
+        </div>
+
+        {/* Right — role badge + user + logout */}
+        <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
+          {/* Role badge */}
+          <div style={{
+            background: isAdmin ? "rgba(168,85,247,0.15)" : "rgba(0,194,255,0.12)",
+            border: `1px solid ${isAdmin ? "rgba(168,85,247,0.4)" : "rgba(0,194,255,0.4)"}`,
+            color: isAdmin ? "#a855f7" : C.supply,
+            fontSize: 10, fontWeight: 800, fontFamily: "monospace",
+            letterSpacing: 1, padding: "4px 10px", borderRadius: 4,
+          }}>
+            {isAdmin ? "⚙ ADMIN" : "🎓 STUDENT"}
+          </div>
+
+          <div style={{ textAlign: "right" }}>
+            <div style={{ color: "white", fontSize: 12, fontWeight: 700 }}>{user?.name}</div>
+            <div style={{ color: C.muted, fontSize: 10 }}>{user?.email}</div>
+          </div>
+
+          <button onClick={logout} style={{
+            background: "rgba(255,77,109,0.1)", border: "1px solid rgba(255,77,109,0.3)",
+            color: "#ff4d6d", padding: "6px 12px", borderRadius: 5,
+            cursor: "pointer", fontSize: 11, fontWeight: 700,
+          }}>Logout</button>
+        </div>
       </div>
     </nav>
   );
 }
 
 // ─────────────────────────────────────────────────────────────
-// LOGIN PAGE  (original design: big cyan title, dark card)
+// LOGIN PAGE  (original glowing cyan design)
 // ─────────────────────────────────────────────────────────────
 function LoginPage({ onSwitchToSignup }) {
-  const { login }             = useAuth();
-  const [email,   setEmail]   = useState("");
-  const [pwd,     setPwd]     = useState("");
-  const [err,     setErr]     = useState("");
+  const { login } = useAuth();
+  const [email, setEmail]   = useState("");
+  const [pass,  setPass]    = useState("");
+  const [error, setError]   = useState("");
   const [loading, setLoading] = useState(false);
 
-  const handle = async (e) => {
-    e.preventDefault();
-    setErr(""); setLoading(true);
+  const submit = async () => {
+    setError(""); setLoading(true);
     try {
-      const res = await axios.post(`${API}/auth/login`, { email, password: pwd });
-      login(res.data);
-    } catch (ex) {
-      setErr(ex.response?.data?.error || "Invalid email or password.");
+      const r = await axios.post(`${API}/auth/login`, { email, password: pass });
+      login({ name: r.data.name, email: r.data.email, token: r.data.token, role: r.data.role || "student" });
+    } catch (e) {
+      setError(e.response?.data?.error || "Login failed");
     } finally { setLoading(false); }
+  };
+
+  const inp = {
+    width: "100%", background: "#0d1a2b",
+    border: "1px solid rgba(0,194,255,0.2)",
+    color: "white", padding: "12px 14px", borderRadius: 6,
+    fontSize: 14, outline: "none", marginBottom: 14,
   };
 
   return (
     <div style={{
-      minHeight: "100vh", background: C.bg,
-      display: "flex", flexDirection: "column",
-      alignItems: "center", justifyContent: "center",
-      fontFamily: "'Syne', sans-serif", padding: "20px",
+      background: C.bg, minHeight: "100vh",
+      display: "flex", alignItems: "center", justifyContent: "center",
+      fontFamily: "'Syne', sans-serif", padding: 20,
     }}>
-      <style>{GLOBAL_CSS}</style>
-
-      {/* Big cyan title — exactly like original screenshots */}
-      <div style={{ textAlign: "center", marginBottom: 32 }}>
-        <div style={{ fontSize: 52, marginBottom: 12 }}>💧</div>
-        <h1 style={{
-          fontSize: "clamp(2rem, 6vw, 3.2rem)",
-          fontWeight: 800,
-          color: C.supply,
-          margin: 0,
-          marginBottom: 8,
-          letterSpacing: 1,
-          lineHeight: 1.1,
-          textShadow: "0 0 40px rgba(0,194,255,0.4)",
-        }}>
-          Water Management<br />Analytics
-        </h1>
-        <p style={{ color: C.muted, fontSize: 14, margin: 0 }}>
-          Smart City Dashboard · Panvel Municipal Corporation
-        </p>
-      </div>
-
-      {/* Dark card — same as original */}
       <div style={{
-        background: C.surface,
-        border: "1px solid rgba(0,212,255,0.15)",
-        borderRadius: 12,
-        padding: "32px 28px",
-        width: "100%", maxWidth: 380,
-        animation: "fadeIn 0.3s ease",
+        background: "#0d1a2b", border: "1px solid rgba(0,194,255,0.15)",
+        borderRadius: 14, padding: "48px 40px", width: "100%", maxWidth: 420,
+        animation: "fadeIn 0.4s ease",
       }}>
-        <h2 style={{ color: "white", fontWeight: 800, fontSize: "1.3rem", margin: "0 0 24px 0" }}>
-          Sign In
-        </h2>
-        {err && <ErrorBanner msg={err} />}
-
-        <form onSubmit={handle}>
-          <div style={{ marginBottom: 16 }}>
-            <label style={{ color: C.muted, fontSize: 11, letterSpacing: 2, display: "block", marginBottom: 6 }}>EMAIL</label>
-            <input type="email" value={email} onChange={e => setEmail(e.target.value)} required
-              placeholder="your@email.com"
-              style={{
-                width: "100%", background: C.surface2,
-                border: "1px solid rgba(0,212,255,0.15)", borderRadius: 7,
-                padding: "11px 14px", color: "white", fontSize: 14, outline: "none",
-              }} />
-          </div>
-          <div style={{ marginBottom: 24 }}>
-            <label style={{ color: C.muted, fontSize: 11, letterSpacing: 2, display: "block", marginBottom: 6 }}>PASSWORD</label>
-            <input type="password" value={pwd} onChange={e => setPwd(e.target.value)} required
-              placeholder="••••••••"
-              style={{
-                width: "100%", background: C.surface2,
-                border: "1px solid rgba(0,212,255,0.15)", borderRadius: 7,
-                padding: "11px 14px", color: "white", fontSize: 14, outline: "none",
-              }} />
-          </div>
-
-          {/* Cyan button — same as original */}
-          <button type="submit" disabled={loading} style={{
-            width: "100%", padding: "13px",
-            background: loading ? "rgba(0,194,255,0.08)" : "rgba(0,194,255,0.15)",
-            border: "1px solid rgba(0,194,255,0.5)",
-            borderRadius: 8, color: C.supply,
-            fontWeight: 800, fontSize: 14, letterSpacing: 1,
-            cursor: loading ? "not-allowed" : "pointer",
-            opacity: loading ? 0.6 : 1, transition: "all 0.2s",
+        <div style={{ textAlign: "center", marginBottom: 36 }}>
+          <div style={{ fontSize: 36, marginBottom: 12 }}>💧</div>
+          <h1 style={{
+            fontSize: "1.8rem", fontWeight: 800, margin: "0 0 8px",
+            color: "#00c2ff",
+            textShadow: "0 0 30px rgba(0,194,255,0.5)",
           }}>
-            {loading ? "Signing in..." : "SIGN IN →"}
-          </button>
-        </form>
+            Water Management<br />Analytics
+          </h1>
+          <p style={{ color: C.muted, fontSize: 13, margin: 0 }}>
+            Smart City Dashboard · Panvel Municipal Corporation
+          </p>
+        </div>
 
-        <p style={{ textAlign: "center", color: C.muted, fontSize: 13, marginTop: 18, marginBottom: 0 }}>
+        <ErrorBanner msg={error} />
+
+        <input value={email} onChange={e => setEmail(e.target.value)}
+          placeholder="your@email.com" type="email" style={inp}
+          onKeyDown={e => e.key === "Enter" && submit()} />
+        <input value={pass} onChange={e => setPass(e.target.value)}
+          placeholder="••••••••" type="password" style={{ ...inp, marginBottom: 20 }}
+          onKeyDown={e => e.key === "Enter" && submit()} />
+
+        <button onClick={submit} disabled={loading} style={{
+          width: "100%", padding: "13px",
+          background: "rgba(0,194,255,0.12)",
+          border: "1px solid rgba(0,194,255,0.5)",
+          color: "#00c2ff", borderRadius: 6,
+          fontWeight: 800, fontSize: 14, cursor: loading ? "not-allowed" : "pointer",
+          letterSpacing: 2, opacity: loading ? 0.6 : 1,
+          transition: "all 0.2s",
+        }}>
+          {loading ? "⏳ SIGNING IN..." : "SIGN IN"}
+        </button>
+
+        <p style={{ textAlign: "center", color: C.muted, fontSize: 13, marginTop: 20 }}>
           Don't have an account?{" "}
-          <span onClick={onSwitchToSignup}
-            style={{ color: C.supply, cursor: "pointer", fontWeight: 700 }}>
-            Create one
-          </span>
+          <span onClick={onSwitchToSignup} style={{
+            color: "#00c2ff", cursor: "pointer", fontWeight: 700,
+          }}>Create one</span>
         </p>
       </div>
     </div>
@@ -339,148 +326,107 @@ function LoginPage({ onSwitchToSignup }) {
 }
 
 // ─────────────────────────────────────────────────────────────
-// SIGNUP PAGE  (original design + role selector)
+// SIGNUP PAGE  (role selector cards)
 // ─────────────────────────────────────────────────────────────
 function SignupPage({ onSwitchToLogin }) {
-  const { login }             = useAuth();
-  const [name,    setName]    = useState("");
-  const [email,   setEmail]   = useState("");
-  const [pwd,     setPwd]     = useState("");
-  const [confirm, setConfirm] = useState("");
-  const [role,    setRole]    = useState("student");
-  const [err,     setErr]     = useState("");
-  const [ok,      setOk]      = useState("");
+  const { login } = useAuth();
+  const [name,  setName]  = useState("");
+  const [email, setEmail] = useState("");
+  const [pass,  setPass]  = useState("");
+  const [pass2, setPass2] = useState("");
+  const [role,  setRole]  = useState("student");
+  const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
-  const handle = async (e) => {
-    e.preventDefault();
-    if (pwd !== confirm) { setErr("Passwords do not match."); return; }
-    setErr(""); setOk(""); setLoading(true);
+  const submit = async () => {
+    setError("");
+    if (pass !== pass2) { setError("Passwords do not match"); return; }
+    if (pass.length < 6) { setError("Password must be at least 6 characters"); return; }
+    setLoading(true);
     try {
-      const res = await axios.post(`${API}/auth/register`, { name, email, password: pwd, role });
-      setOk(`Account created! Welcome, ${res.data.name}.`);
-      setTimeout(() => login(res.data), 700);
-    } catch (ex) {
-      setErr(ex.response?.data?.error || "Registration failed.");
+      const r = await axios.post(`${API}/auth/register`, { name, email, password: pass, role });
+      login({ name: r.data.name, email: r.data.email, token: r.data.token, role: r.data.role || role });
+    } catch (e) {
+      setError(e.response?.data?.error || "Registration failed");
     } finally { setLoading(false); }
+  };
+
+  const inp = {
+    width: "100%", background: "#0d1a2b",
+    border: "1px solid rgba(0,194,255,0.2)",
+    color: "white", padding: "12px 14px", borderRadius: 6,
+    fontSize: 14, outline: "none", marginBottom: 12,
   };
 
   return (
     <div style={{
-      minHeight: "100vh", background: C.bg,
-      display: "flex", flexDirection: "column",
-      alignItems: "center", justifyContent: "center",
-      fontFamily: "'Syne', sans-serif", padding: "20px",
+      background: C.bg, minHeight: "100vh",
+      display: "flex", alignItems: "center", justifyContent: "center",
+      fontFamily: "'Syne', sans-serif", padding: 20,
     }}>
-      <style>{GLOBAL_CSS}</style>
-
-      {/* Same big cyan title */}
-      <div style={{ textAlign: "center", marginBottom: 28 }}>
-        <div style={{ fontSize: 44, marginBottom: 10 }}>💧</div>
-        <h1 style={{
-          fontSize: "clamp(1.8rem, 5vw, 2.8rem)",
-          fontWeight: 800, color: C.supply, margin: 0, marginBottom: 6,
-          textShadow: "0 0 40px rgba(0,194,255,0.4)",
-        }}>
-          Water Management<br />Analytics
-        </h1>
-        <p style={{ color: C.muted, fontSize: 13, margin: 0 }}>Create your account</p>
-      </div>
-
       <div style={{
-        background: C.surface,
-        border: "1px solid rgba(0,212,255,0.15)",
-        borderRadius: 12, padding: "32px 28px",
-        width: "100%", maxWidth: 420,
-        animation: "fadeIn 0.3s ease",
+        background: "#0d1a2b", border: "1px solid rgba(0,194,255,0.15)",
+        borderRadius: 14, padding: "40px 36px", width: "100%", maxWidth: 460,
+        animation: "fadeIn 0.4s ease",
       }}>
-        <h2 style={{ color: "white", fontWeight: 800, fontSize: "1.3rem", margin: "0 0 22px 0" }}>
-          Create Account
-        </h2>
-        {err && <ErrorBanner msg={err} />}
-        {ok  && <OkBanner    msg={ok}  />}
-
-        <form onSubmit={handle}>
-          {/* Name */}
-          <div style={{ marginBottom: 14 }}>
-            <label style={{ color: C.muted, fontSize: 11, letterSpacing: 2, display: "block", marginBottom: 6 }}>FULL NAME</label>
-            <input type="text" value={name} onChange={e => setName(e.target.value)} required
-              placeholder="Your name"
-              style={{ width:"100%", background:C.surface2, border:"1px solid rgba(0,212,255,0.15)", borderRadius:7, padding:"11px 14px", color:"white", fontSize:14, outline:"none" }} />
-          </div>
-
-          {/* Email */}
-          <div style={{ marginBottom: 14 }}>
-            <label style={{ color: C.muted, fontSize: 11, letterSpacing: 2, display: "block", marginBottom: 6 }}>EMAIL</label>
-            <input type="email" value={email} onChange={e => setEmail(e.target.value)} required
-              placeholder="your@email.com"
-              style={{ width:"100%", background:C.surface2, border:"1px solid rgba(0,212,255,0.15)", borderRadius:7, padding:"11px 14px", color:"white", fontSize:14, outline:"none" }} />
-          </div>
-
-          {/* Password */}
-          <div style={{ marginBottom: 14 }}>
-            <label style={{ color: C.muted, fontSize: 11, letterSpacing: 2, display: "block", marginBottom: 6 }}>PASSWORD</label>
-            <input type="password" value={pwd} onChange={e => setPwd(e.target.value)} required
-              placeholder="Min 6 characters"
-              style={{ width:"100%", background:C.surface2, border:"1px solid rgba(0,212,255,0.15)", borderRadius:7, padding:"11px 14px", color:"white", fontSize:14, outline:"none" }} />
-          </div>
-
-          {/* Confirm password */}
-          <div style={{ marginBottom: 18 }}>
-            <label style={{ color: C.muted, fontSize: 11, letterSpacing: 2, display: "block", marginBottom: 6 }}>CONFIRM PASSWORD</label>
-            <input type="password" value={confirm} onChange={e => setConfirm(e.target.value)} required
-              placeholder="Re-enter password"
-              style={{ width:"100%", background:C.surface2, border:"1px solid rgba(0,212,255,0.15)", borderRadius:7, padding:"11px 14px", color:"white", fontSize:14, outline:"none" }} />
-          </div>
-
-          {/* Role selector — styled in original theme */}
-          <div style={{ marginBottom: 22 }}>
-            <label style={{ color: C.muted, fontSize: 11, letterSpacing: 2, display: "block", marginBottom: 10 }}>SELECT ROLE</label>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-              {[
-                { id: "student", icon: "🎓", title: "Student",  desc: "View analytics & download data" },
-                { id: "admin",   icon: "⚙",  title: "Admin",    desc: "Upload files & manage data" },
-              ].map(r => (
-                <div key={r.id} onClick={() => setRole(r.id)} style={{
-                  border: `2px solid ${role === r.id
-                    ? (r.id === "admin" ? "rgba(168,85,247,0.7)" : "rgba(0,194,255,0.7)")
-                    : "rgba(255,255,255,0.08)"}`,
-                  borderRadius: 10, padding: "14px 10px", cursor: "pointer", textAlign: "center",
-                  background: role === r.id
-                    ? (r.id === "admin" ? "rgba(168,85,247,0.1)" : "rgba(0,194,255,0.08)")
-                    : "rgba(255,255,255,0.02)",
-                  transition: "all 0.2s",
-                }}>
-                  <div style={{ fontSize: 24, marginBottom: 5 }}>{r.icon}</div>
-                  <div style={{
-                    fontWeight: 800, fontSize: 14,
-                    color: role === r.id ? (r.id === "admin" ? "#a855f7" : C.supply) : "white",
-                  }}>{r.title}</div>
-                  <div style={{ color: C.muted, fontSize: 11, marginTop: 4, lineHeight: 1.4 }}>{r.desc}</div>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Green button for create — same as original screenshots */}
-          <button type="submit" disabled={loading} style={{
-            width: "100%", padding: "13px",
-            background: "rgba(0,255,136,0.12)",
-            border: "1px solid rgba(0,255,136,0.5)",
-            borderRadius: 8, color: C.consumption,
-            fontWeight: 800, fontSize: 14, letterSpacing: 1,
-            cursor: loading ? "not-allowed" : "pointer",
-            opacity: loading ? 0.6 : 1, transition: "all 0.2s",
+        <div style={{ textAlign: "center", marginBottom: 28 }}>
+          <h1 style={{
+            fontSize: "1.6rem", fontWeight: 800, margin: "0 0 6px",
+            color: "#00c2ff", textShadow: "0 0 24px rgba(0,194,255,0.4)",
           }}>
-            {loading ? "Creating..." : "CREATE ACCOUNT →"}
-          </button>
-        </form>
+            Water Management<br />Analytics
+          </h1>
+          <p style={{ color: C.muted, fontSize: 13, margin: 0 }}>Create your account</p>
+        </div>
 
-        <p style={{ textAlign:"center", color:C.muted, fontSize:13, marginTop:18, marginBottom:0 }}>
+        <ErrorBanner msg={error} />
+
+        <input value={name}  onChange={e => setName(e.target.value)}  placeholder="Full Name"        style={inp} />
+        <input value={email} onChange={e => setEmail(e.target.value)} placeholder="your@email.com"   type="email" style={inp} />
+        <input value={pass}  onChange={e => setPass(e.target.value)}  placeholder="Password (min 6)" type="password" style={inp} />
+        <input value={pass2} onChange={e => setPass2(e.target.value)} placeholder="Confirm Password" type="password" style={{ ...inp, marginBottom: 18 }} />
+
+        {/* Role selector */}
+        <div style={{ marginBottom: 20 }}>
+          <div style={{ color: C.muted, fontSize: 10, letterSpacing: 2, marginBottom: 10 }}>SELECT YOUR ROLE</div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+            {[
+              { id: "student", icon: "🎓", label: "Student",  desc: "View analytics & download data",   border: C.supply,  bg: "rgba(0,194,255,0.08)"   },
+              { id: "admin",   icon: "⚙",  label: "Admin",    desc: "Upload files & manage data",       border: "#a855f7", bg: "rgba(168,85,247,0.08)" },
+            ].map(r => (
+              <div key={r.id} onClick={() => setRole(r.id)} style={{
+                padding: "14px 16px", borderRadius: 8, cursor: "pointer",
+                background: role === r.id ? r.bg : "rgba(255,255,255,0.02)",
+                border: `2px solid ${role === r.id ? r.border : "rgba(255,255,255,0.08)"}`,
+                transition: "all 0.2s",
+                boxShadow: role === r.id ? `0 0 14px ${r.border}33` : "none",
+              }}>
+                <div style={{ fontSize: 20, marginBottom: 4 }}>{r.icon}</div>
+                <div style={{
+                  color: role === r.id ? r.border : "white",
+                  fontWeight: 700, fontSize: 13, marginBottom: 3,
+                }}>{r.label}</div>
+                <div style={{ color: C.muted, fontSize: 11 }}>{r.desc}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <button onClick={submit} disabled={loading} style={{
+          width: "100%", padding: "13px",
+          background: "rgba(0,255,136,0.1)", border: "1px solid rgba(0,255,136,0.4)",
+          color: "#00ff88", borderRadius: 6, fontWeight: 800,
+          fontSize: 14, cursor: loading ? "not-allowed" : "pointer",
+          letterSpacing: 2, opacity: loading ? 0.6 : 1,
+        }}>
+          {loading ? "⏳ CREATING..." : "CREATE ACCOUNT"}
+        </button>
+
+        <p style={{ textAlign: "center", color: C.muted, fontSize: 13, marginTop: 18 }}>
           Already have an account?{" "}
-          <span onClick={onSwitchToLogin} style={{ color:C.supply, cursor:"pointer", fontWeight:700 }}>
-            Sign in
-          </span>
+          <span onClick={onSwitchToLogin} style={{
+            color: "#00c2ff", cursor: "pointer", fontWeight: 700,
+          }}>Sign in</span>
         </p>
       </div>
     </div>
@@ -488,106 +434,86 @@ function SignupPage({ onSwitchToLogin }) {
 }
 
 // ─────────────────────────────────────────────────────────────
-// UPLOAD PAGE  (Admin only)
+// UPLOAD PAGE  (admin only)
 // ─────────────────────────────────────────────────────────────
 function UploadPage() {
-  const { user }              = useAuth();
-  const [file,    setFile]    = useState(null);
-  const [desc,    setDesc]    = useState("");
-  const [loading, setLoading] = useState(false);
-  const [err,     setErr]     = useState("");
-  const [ok,      setOk]      = useState("");
-  const [result,  setResult]  = useState(null);
+  const { user }   = useAuth();
+  const [file,     setFile]    = useState(null);
+  const [desc,     setDesc]    = useState("");
+  const [status,   setStatus]  = useState(null);
+  const [loading,  setLoading] = useState(false);
 
-  const handleUpload = async (e) => {
-    e.preventDefault();
-    if (!file) { setErr("Please select a file."); return; }
-    setErr(""); setOk(""); setLoading(true);
+  const upload = async () => {
+    if (!file) return;
+    setLoading(true); setStatus(null);
+    const fd = new FormData();
+    fd.append("file", file);
+    fd.append("description", desc);
     try {
-      const form = new FormData();
-      form.append("file", file);
-      form.append("description", desc);
-      const res = await axios.post(`${API}/admin/upload_excel`, form, {
-        headers: { Authorization: `Bearer ${user?.token}`, "Content-Type": "multipart/form-data" },
+      const r = await axios.post(`${API}/admin/upload_excel`, fd, {
+        headers: { Authorization: `Bearer ${user.token}` },
       });
-      setOk(`"${file.name}" uploaded! ${res.data.rows} rows loaded.`);
-      setResult(res.data);
+      setStatus({ ok: true, msg: `✅ Uploaded — ${r.data.rows} rows, ${r.data.columns?.join(", ")}` });
       setFile(null); setDesc("");
-    } catch (ex) {
-      setErr(ex.response?.data?.error || "Upload failed.");
+    } catch (e) {
+      setStatus({ ok: false, msg: e.response?.data?.error || "Upload failed" });
     } finally { setLoading(false); }
   };
 
   return (
-    <div>
-      <h2 style={{ color:"white", margin:"0 0 4px 0", fontSize:"1.2rem" }}>⬆ Upload Water Data</h2>
-      <p style={{ color:C.muted, marginBottom:24, fontSize:13 }}>
-        Upload Excel or CSV files with ward-wise water analytics data.
-      </p>
-      <ErrorBanner msg={err} />
-      <OkBanner    msg={ok}  />
+    <div style={{ padding: "28px 24px", maxWidth: 700 }}>
+      <h2 style={{ margin: "0 0 6px", fontWeight: 800 }}>⬆ Upload Data File</h2>
+      <p style={{ color: C.muted, fontSize: 13, marginBottom: 28 }}>Upload new Excel or CSV files with ward-wise water data.</p>
 
-      <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(300px,1fr))", gap:20 }}>
-        {/* Form */}
-        <div style={{ background:C.surface, border:"1px solid rgba(0,212,255,0.15)", borderRadius:10, padding:24 }}>
-          <h4 style={{ color:C.supply, margin:"0 0 18px 0", fontSize:12, letterSpacing:2 }}>UPLOAD NEW FILE</h4>
-          <form onSubmit={handleUpload}>
-            <div onClick={() => document.getElementById("fi").click()}
-              style={{
-                border:`2px dashed ${file ? "rgba(0,194,255,0.6)" : "rgba(0,212,255,0.2)"}`,
-                borderRadius:8, padding:"28px 16px", textAlign:"center", cursor:"pointer",
-                background: file ? "rgba(0,194,255,0.05)" : "transparent",
-                marginBottom:14, transition:"all 0.2s",
-              }}>
-              <div style={{ fontSize:28, marginBottom:6 }}>{file ? "📄" : "📂"}</div>
-              <div style={{ color: file ? C.supply : C.muted, fontSize:13, fontWeight:600 }}>
-                {file ? file.name : "Click to select .xlsx / .xls / .csv"}
-              </div>
-              {file && <div style={{ color:C.muted, fontSize:11, marginTop:3 }}>{(file.size/1024).toFixed(1)} KB</div>}
-            </div>
-            <input id="fi" type="file" accept=".xlsx,.xls,.csv" style={{ display:"none" }}
-              onChange={e => setFile(e.target.files[0] || null)} />
+      <div style={{ background: C.surface, border: "1px solid rgba(0,212,255,0.15)", borderRadius: 10, padding: "28px" }}>
+        <label style={{
+          display: "block", border: "2px dashed rgba(0,194,255,0.3)",
+          borderRadius: 8, padding: "32px", textAlign: "center", cursor: "pointer",
+          marginBottom: 20, transition: "all 0.2s",
+          background: file ? "rgba(0,194,255,0.05)" : "transparent",
+        }}>
+          <input type="file" accept=".xlsx,.xls,.csv" onChange={e => setFile(e.target.files[0])} style={{ display: "none" }} />
+          <div style={{ fontSize: 28, marginBottom: 8 }}>📂</div>
+          <div style={{ color: file ? C.supply : C.muted, fontWeight: 600, fontSize: 14 }}>
+            {file ? `${file.name} (${(file.size/1024).toFixed(1)} KB)` : "Click to select Excel / CSV file"}
+          </div>
+        </label>
 
-            <div style={{ marginBottom:14 }}>
-              <label style={{ color:C.muted, fontSize:11, letterSpacing:2, display:"block", marginBottom:5 }}>DESCRIPTION (optional)</label>
-              <input type="text" value={desc} onChange={e => setDesc(e.target.value)}
-                placeholder="e.g. March 2026 ward data"
-                style={{ width:"100%", background:C.surface2, border:"1px solid rgba(0,212,255,0.15)", borderRadius:7, padding:"10px 12px", color:"white", fontSize:13, outline:"none" }} />
-            </div>
+        <input value={desc} onChange={e => setDesc(e.target.value)}
+          placeholder="Optional description (e.g. March 2026 ward data)"
+          style={{
+            width: "100%", background: C.surface2, border: "1px solid rgba(0,212,255,0.2)",
+            color: "white", padding: "10px 14px", borderRadius: 6, fontSize: 13,
+            outline: "none", marginBottom: 18,
+          }} />
 
-            <button type="submit" disabled={loading || !file} style={{
-              width:"100%", padding:"12px",
-              background:"rgba(0,194,255,0.12)", border:"1px solid rgba(0,194,255,0.4)",
-              borderRadius:8, color:C.supply, fontWeight:800, fontSize:13, letterSpacing:1,
-              cursor: loading || !file ? "not-allowed" : "pointer",
-              opacity: loading || !file ? 0.5 : 1,
-            }}>
-              {loading ? "⏳ Uploading..." : "⬆ UPLOAD FILE"}
-            </button>
-          </form>
-        </div>
+        {status && (
+          <div style={{
+            padding: "12px 16px", borderRadius: 6, marginBottom: 16, fontSize: 13,
+            background: status.ok ? "rgba(0,255,136,0.08)" : "rgba(255,77,109,0.1)",
+            border: `1px solid ${status.ok ? "rgba(0,255,136,0.3)" : "rgba(255,77,109,0.3)"}`,
+            color: status.ok ? C.consumption : C.leakage,
+          }}>{status.msg}</div>
+        )}
 
-        {/* Requirements */}
-        <div style={{ background:C.surface, border:"1px solid rgba(0,212,255,0.15)", borderRadius:10, padding:24 }}>
-          <h4 style={{ color:C.supply, margin:"0 0 14px 0", fontSize:12, letterSpacing:2 }}>FILE REQUIREMENTS</h4>
-          {[
-            ["Format",  ".xlsx, .xls, .csv"],
-            ["Max Size","50 MB"],
-            ["Columns", "Date, Ward_No, Ward_Name, Water_Supplied_MLD, Water_Consumed_MLD, Leakage_MLD"],
-            ["Zones",   "1 to 27"],
-          ].map(([k,v]) => (
-            <div key={k} style={{ borderBottom:"1px solid rgba(255,255,255,0.05)", padding:"8px 0", display:"flex", gap:10 }}>
-              <span style={{ color:C.muted, fontSize:12, minWidth:70 }}>{k}:</span>
-              <span style={{ color:"white", fontSize:12 }}>{v}</span>
-            </div>
-          ))}
-          {result && (
-            <div style={{ marginTop:14, background:"rgba(0,255,136,0.06)", border:"1px solid rgba(0,255,136,0.2)", borderRadius:8, padding:"12px" }}>
-              <div style={{ color:C.consumption, fontWeight:700, marginBottom:5, fontSize:12 }}>✓ Upload Result</div>
-              <div style={{ color:C.muted, fontSize:12 }}>Rows: <span style={{ color:"white" }}>{result.rows?.toLocaleString()}</span></div>
-              <div style={{ color:C.muted, fontSize:12 }}>Cols: <span style={{ color:"white" }}>{result.columns?.join(", ")}</span></div>
-            </div>
-          )}
+        <button onClick={upload} disabled={!file || loading} style={{
+          background: "rgba(0,194,255,0.12)", border: "1px solid rgba(0,194,255,0.4)",
+          color: C.supply, padding: "11px 28px", borderRadius: 6,
+          fontWeight: 700, fontSize: 13, cursor: !file || loading ? "not-allowed" : "pointer",
+          opacity: !file || loading ? 0.5 : 1,
+        }}>
+          {loading ? "⏳ Uploading..." : "⬆ UPLOAD FILE"}
+        </button>
+      </div>
+
+      <div style={{
+        background: C.surface, border: "1px solid rgba(0,212,255,0.1)",
+        borderRadius: 8, padding: "18px 20px", marginTop: 20,
+      }}>
+        <div style={{ color: C.supply, fontWeight: 700, fontSize: 12, marginBottom: 10 }}>📋 REQUIREMENTS</div>
+        <div style={{ color: C.muted, fontSize: 12, lineHeight: 1.8 }}>
+          Accepted formats: .xlsx, .xls, .csv · Max size: 50 MB<br />
+          Expected columns: Date, Zone_No, Ward_Name, Water_Supplied_MLD, Water_Consumed_MLD, Leakage_MLD
         </div>
       </div>
     </div>
@@ -595,218 +521,402 @@ function UploadPage() {
 }
 
 // ─────────────────────────────────────────────────────────────
-// DATA FILES + DOWNLOAD PAGE  (both roles)
-// ─────────────────────────────────────────────────────────────
-function DataFilesPage() {
-  const { user }                  = useAuth();
-  const isAdmin                   = user?.role === "admin";
-  const [files,   setFiles]       = useState([]);
-  const [loading, setLoading]     = useState(true);
-  const [err,     setErr]         = useState("");
-  const [ok,      setOk]          = useState("");
-  const [preview, setPreview]     = useState(null);
-  const [prevLoad, setPrevLoad]   = useState(false);
-
-  const load = useCallback(() => {
-    setLoading(true);
-    axios.get(`${API}/admin/files`, { headers:{ Authorization:`Bearer ${user?.token}` } })
-      .then(r => setFiles(r.data))
-      .catch(e => setErr(e.response?.data?.error || e.message))
-      .finally(() => setLoading(false));
-  }, [user]);
-
-  useEffect(() => { load(); }, [load]);
-
-  const del = async (id, name) => {
-    if (!window.confirm(`Delete "${name}"?`)) return;
-    try {
-      await axios.delete(`${API}/admin/files/${id}`, { headers:{ Authorization:`Bearer ${user?.token}` } });
-      setOk("File deleted."); load();
-    } catch (e) { setErr(e.response?.data?.error || e.message); }
-  };
-
-  const download = (url, filename) => {
-    fetch(`${API}${url}`, { headers:{ Authorization:`Bearer ${user?.token}` } })
-      .then(r => r.blob())
-      .then(blob => { const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download=filename; a.click(); });
-  };
-
-  const previewFile = async (id) => {
-    if (preview?.id === id) { setPreview(null); return; }
-    setPrevLoad(true);
-    try {
-      const r = await axios.get(`${API}/admin/files/${id}/preview`, { headers:{ Authorization:`Bearer ${user?.token}` } });
-      setPreview({ id, data: r.data });
-    } catch (e) { setErr(e.response?.data?.error || e.message); }
-    finally { setPrevLoad(false); }
-  };
-
-  return (
-    <div>
-      <h2 style={{ color:"white", margin:"0 0 4px 0", fontSize:"1.2rem" }}>📁 Data Files</h2>
-      <p style={{ color:C.muted, marginBottom:20, fontSize:13 }}>
-        {isAdmin ? "Manage uploaded data files." : "Download water data Excel files."}
-      </p>
-      <ErrorBanner msg={err} />
-      <OkBanner    msg={ok}  />
-
-      {/* Built-in downloads */}
-      <div style={{ background:C.surface, border:"1px solid rgba(0,212,255,0.15)", borderRadius:8, padding:"14px 18px", marginBottom:20 }}>
-        <div style={{ color:C.muted, fontSize:11, letterSpacing:2, marginBottom:10 }}>BUILT-IN DOWNLOADS</div>
-        <div style={{ display:"flex", gap:10, flexWrap:"wrap" }}>
-          <button onClick={() => download("/download/historical_excel","WMA_City_Historical.xlsx")}
-            style={{ background:"rgba(0,194,255,0.1)", border:"1px solid rgba(0,194,255,0.3)", color:C.supply, padding:"8px 14px", borderRadius:6, fontSize:12, fontWeight:700, cursor:"pointer" }}>
-            📊 City Historical (.xlsx)
-          </button>
-          {[1,2,3,4,5].map(z => (
-            <button key={z} onClick={() => download(`/download/ward_excel/${z}`,`WMA_Zone${z}.xlsx`)}
-              style={{ background:"rgba(0,255,136,0.08)", border:"1px solid rgba(0,255,136,0.2)", color:C.consumption, padding:"8px 12px", borderRadius:6, fontSize:12, fontWeight:600, cursor:"pointer" }}>
-              Zone {z}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {loading ? <Spinner /> : files.length === 0 ? (
-        <div style={{ textAlign:"center", color:C.muted, padding:40, fontSize:14 }}>
-          {isAdmin ? "No uploaded files yet. Use ⬆ Upload to add files." : "No uploaded files available yet."}
-        </div>
-      ) : (
-        <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
-          {files.map(f => (
-            <div key={f.id} style={{ background:C.surface, border:"1px solid rgba(0,212,255,0.12)", borderRadius:8, padding:"12px 16px" }}>
-              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", flexWrap:"wrap", gap:8 }}>
-                <div>
-                  <span style={{ color:"white", fontWeight:700 }}>📄 {f.original_name}</span>
-                  <span style={{ color:C.muted, fontSize:12, marginLeft:12 }}>
-                    {f.rows?.toLocaleString()} rows · {(f.file_size/1024).toFixed(1)} KB · {f.uploaded_at?.slice(0,10)}
-                    {f.description ? ` · ${f.description}` : ""}
-                  </span>
-                </div>
-                <div style={{ display:"flex", gap:8 }}>
-                  <button onClick={() => previewFile(f.id)}
-                    style={{ background:"rgba(0,194,255,0.08)", border:"1px solid rgba(0,194,255,0.25)", color:C.supply, padding:"5px 12px", borderRadius:5, fontSize:12, cursor:"pointer" }}>
-                    {preview?.id===f.id ? "Hide" : "👁 Preview"}
-                  </button>
-                  <button onClick={() => download(`/admin/files/${f.id}/download`, f.original_name)}
-                    style={{ background:"rgba(0,255,136,0.08)", border:"1px solid rgba(0,255,136,0.25)", color:C.consumption, padding:"5px 12px", borderRadius:5, fontSize:12, cursor:"pointer" }}>
-                    ⬇ Download
-                  </button>
-                  {isAdmin && (
-                    <button onClick={() => del(f.id, f.original_name)}
-                      style={{ background:"rgba(255,77,109,0.08)", border:"1px solid rgba(255,77,109,0.25)", color:C.leakage, padding:"5px 12px", borderRadius:5, fontSize:12, cursor:"pointer" }}>
-                      🗑 Delete
-                    </button>
-                  )}
-                </div>
-              </div>
-              {preview?.id === f.id && (
-                prevLoad ? <Spinner /> : preview.data && (
-                  <div style={{ marginTop:12, overflowX:"auto" }}>
-                    <div style={{ color:C.muted, fontSize:11, marginBottom:5 }}>
-                      First {preview.data.rows.length} of {preview.data.total_rows} rows
-                    </div>
-                    <table style={{ borderCollapse:"collapse", fontSize:11 }}>
-                      <thead><tr style={{ borderBottom:"1px solid rgba(0,212,255,0.15)" }}>
-                        {preview.data.columns.map(c => <th key={c} style={{ padding:"6px 10px", color:C.supply, fontSize:10, textAlign:"left", whiteSpace:"nowrap" }}>{c}</th>)}
-                      </tr></thead>
-                      <tbody>
-                        {preview.data.rows.map((row,i) => (
-                          <tr key={i} style={{ background:i%2?C.surface2:"transparent" }}>
-                            {preview.data.columns.map(c => <td key={c} style={{ padding:"5px 10px", color:C.muted, whiteSpace:"nowrap" }}>{String(row[c]??"")}</td>)}
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )
-              )}
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────
-// USERS PAGE  (Admin only)
+// USERS PAGE  (admin only)
 // ─────────────────────────────────────────────────────────────
 function UsersPage() {
-  const { user }              = useAuth();
+  const { user }  = useAuth();
   const [users,   setUsers]   = useState([]);
   const [loading, setLoading] = useState(true);
-  const [err,     setErr]     = useState("");
 
   useEffect(() => {
-    axios.get(`${API}/admin/users`, { headers:{ Authorization:`Bearer ${user?.token}` } })
-      .then(r => setUsers(r.data))
-      .catch(e => setErr(e.response?.data?.error || e.message))
-      .finally(() => setLoading(false));
+    axios.get(`${API}/admin/users`, {
+      headers: { Authorization: `Bearer ${user.token}` },
+    }).then(r => setUsers(r.data)).finally(() => setLoading(false));
   }, [user]);
 
+  const admins   = users.filter(u => u.role === "admin").length;
+  const students = users.filter(u => u.role === "student").length;
+
   return (
-    <div>
-      <h2 style={{ color:"white", margin:"0 0 4px 0", fontSize:"1.2rem" }}>👥 Registered Users</h2>
-      <p style={{ color:C.muted, marginBottom:20, fontSize:13 }}>All users registered on Water Management Analytics.</p>
-      <ErrorBanner msg={err} />
+    <div style={{ padding: "28px 24px" }}>
+      <h2 style={{ margin: "0 0 6px", fontWeight: 800 }}>👥 Registered Users</h2>
+      <p style={{ color: C.muted, marginBottom: 24, fontSize: 13 }}>All users registered on Water Management Analytics.</p>
+
+      <div style={{ display: "flex", gap: 14, flexWrap: "wrap", marginBottom: 28 }}>
+        <KpiCard label="Total Users"    value={users.length} color={C.supply} />
+        <KpiCard label="Admins"         value={admins}       color="#a855f7" />
+        <KpiCard label="Students"       value={students}     color={C.consumption} />
+      </div>
+
       {loading ? <Spinner /> : (
-        <>
-          <div style={{ display:"flex", gap:14, flexWrap:"wrap", marginBottom:20 }}>
-            <KpiCard label="Total Users" value={users.length} color={C.supply} />
-            <KpiCard label="Admins"   value={users.filter(u=>u.role==="admin").length}   color="#a855f7" />
-            <KpiCard label="Students" value={users.filter(u=>u.role==="student").length} color={C.consumption} />
-          </div>
-          <div style={{ overflowX:"auto", background:C.surface, borderRadius:8, border:"1px solid rgba(0,212,255,0.12)" }}>
-            <table style={{ width:"100%", borderCollapse:"collapse", fontSize:12 }}>
-              <thead><tr style={{ borderBottom:"1px solid rgba(0,212,255,0.2)" }}>
-                {["#","Name","Email","Role","Registered"].map(h => (
-                  <th key={h} style={{ padding:"10px 14px", textAlign:"left", color:C.supply, fontSize:10, letterSpacing:1 }}>{h}</th>
+        <div style={{ overflowX: "auto", background: C.surface, borderRadius: 8, border: "1px solid rgba(0,212,255,0.1)" }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+            <thead>
+              <tr style={{ borderBottom: "1px solid rgba(0,212,255,0.2)" }}>
+                {["#", "Name", "Email", "Role", "Registered"].map(h => (
+                  <th key={h} style={{ padding: "12px 14px", textAlign: "left", color: C.supply, fontFamily: "monospace", letterSpacing: 1, fontSize: 10 }}>{h}</th>
                 ))}
-              </tr></thead>
-              <tbody>
-                {users.map((u,i) => (
-                  <tr key={u.id} style={{ borderBottom:"1px solid rgba(255,255,255,0.04)", background:i%2?C.surface2:"transparent" }}>
-                    <td style={{ padding:"9px 14px", color:C.muted, fontFamily:"monospace" }}>{i+1}</td>
-                    <td style={{ padding:"9px 14px", color:"white", fontWeight:600 }}>{u.name}</td>
-                    <td style={{ padding:"9px 14px", color:C.muted, fontSize:12 }}>{u.email}</td>
-                    <td style={{ padding:"9px 14px" }}>
-                      <span style={{
-                        background: u.role==="admin" ? "rgba(168,85,247,0.15)" : "rgba(0,194,255,0.1)",
-                        color: u.role==="admin" ? "#a855f7" : C.supply,
-                        border:`1px solid ${u.role==="admin" ? "rgba(168,85,247,0.35)" : "rgba(0,194,255,0.25)"}`,
-                        padding:"2px 8px", borderRadius:20, fontSize:10, fontWeight:700, letterSpacing:1,
-                      }}>{u.role === "admin" ? "⚙ ADMIN" : "🎓 STUDENT"}</span>
-                    </td>
-                    <td style={{ padding:"9px 14px", color:C.muted, fontSize:12 }}>{u.created?.slice(0,10)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </>
+              </tr>
+            </thead>
+            <tbody>
+              {users.map((u, i) => (
+                <tr key={i} style={{ borderBottom: "1px solid rgba(255,255,255,0.04)", background: i % 2 ? C.surface2 : "transparent" }}>
+                  <td style={{ padding: "10px 14px", color: C.muted, fontFamily: "monospace" }}>{i + 1}</td>
+                  <td style={{ padding: "10px 14px", fontWeight: 600 }}>{u.name}</td>
+                  <td style={{ padding: "10px 14px", color: C.muted }}>{u.email}</td>
+                  <td style={{ padding: "10px 14px" }}>
+                    <span style={{
+                      background: u.role === "admin" ? "rgba(168,85,247,0.15)" : "rgba(0,194,255,0.12)",
+                      color: u.role === "admin" ? "#a855f7" : C.supply,
+                      border: `1px solid ${u.role === "admin" ? "rgba(168,85,247,0.3)" : "rgba(0,194,255,0.3)"}`,
+                      padding: "2px 10px", borderRadius: 3, fontSize: 10, fontWeight: 700,
+                    }}>
+                      {u.role === "admin" ? "⚙ ADMIN" : "🎓 STUDENT"}
+                    </span>
+                  </td>
+                  <td style={{ padding: "10px 14px", color: C.muted, fontSize: 12 }}>{u.created?.slice(0, 10)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
     </div>
   );
 }
 
 // ─────────────────────────────────────────────────────────────
-// MAIN DASHBOARD  (IDENTICAL to original App_improved.js)
+// DATA FILES PAGE  (both roles — admin can delete)
 // ─────────────────────────────────────────────────────────────
-function Dashboard({ tab, setTab }) {
-  const { user }                    = useAuth();
-  const [days, setDays]             = useState(7);
-  const [cityData, setCityData]     = useState([]);
-  const [wardData, setWardData]     = useState([]);
-  const [wardList, setWardList]     = useState([]);
-  const [selectedWard, setSelectedWard] = useState(1);
-  const [summary, setSummary]       = useState({});
-  const [metrics, setMetrics]       = useState([]);
-  const [historical, setHistorical] = useState([]);
-  const [loading, setLoading]       = useState({});
-  const [error, setError]           = useState("");
+function DataFilesPage() {
+  const { user }  = useAuth();
+  const isAdmin   = user?.role === "admin";
+  const [files,   setFiles]   = useState([]);
+  const [preview, setPreview] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [filesErr, setFilesErr] = useState("");
 
-  const setLoad = (k, v) => setLoading(p => ({...p, [k]: v}));
+  const loadFiles = () => {
+    setLoading(true); setFilesErr("");
+    axios.get(`${API}/admin/files`, { headers: { Authorization: `Bearer ${user.token}` } })
+      .then(r => setFiles(r.data))
+      .catch(e => setFilesErr(e.response?.data?.error || "Could not load uploaded files — backend may not support this yet."))
+      .finally(() => setLoading(false));
+  };
+
+  useEffect(loadFiles, [user]);
+
+  const del = async (id) => {
+    if (!window.confirm("Delete this file?")) return;
+    await axios.delete(`${API}/admin/files/${id}`, { headers: { Authorization: `Bearer ${user.token}` } });
+    loadFiles();
+  };
+
+  const loadPreview = async (id, name) => {
+    const r = await axios.get(`${API}/admin/files/${id}/preview`, { headers: { Authorization: `Bearer ${user.token}` } });
+    setPreview({ name, rows: r.data });
+  };
+
+  // Fix: fetch with Authorization header then trigger blob download
+  const downloadWithAuth = async (url, filename) => {
+    try {
+      const res = await fetch(`${API}${url}`, {
+        headers: { Authorization: `Bearer ${user.token}` },
+      });
+      if (!res.ok) { alert("Download failed: " + res.status); return; }
+      const blob = await res.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = blobUrl; a.download = filename; a.click();
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 2000);
+    } catch (e) {
+      alert("Download error: " + e.message);
+    }
+  };
+
+  const download  = (id, name) => downloadWithAuth(`/admin/files/${id}/download`, name);
+  const dlBuiltin = (url, name) => downloadWithAuth(url, name);
+
+  const BUILTINS = [
+    { label: "City Historical Data (Excel)", url: "/download/historical_excel", file: "City_Historical.xlsx" },
+    ...[1,2,3,4,5].map(n => ({
+      label: `Zone ${n} Historical (Excel)`,
+      url:   `/download/ward_excel/${n}`,
+      file:  `Zone_${n}_Historical.xlsx`,
+    })),
+  ];
+
+  return (
+    <div style={{ padding: "28px 24px" }}>
+      <h2 style={{ margin: "0 0 6px", fontWeight: 800 }}>📁 Data Files</h2>
+      <p style={{ color: C.muted, fontSize: 13, marginBottom: 28 }}>
+        Download built-in datasets or files uploaded by administrators.
+      </p>
+
+      {/* Built-in downloads */}
+      <h4 style={{ color: C.supply, marginBottom: 14, fontSize: 12, letterSpacing: 2 }}>BUILT-IN DOWNLOADS</h4>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginBottom: 32 }}>
+        {BUILTINS.map(b => (
+          <button key={b.url} onClick={() => dlBuiltin(b.url, b.file)} style={{
+            background: C.surface, border: "1px solid rgba(0,212,255,0.2)",
+            color: C.supply, padding: "9px 16px", borderRadius: 6,
+            fontSize: 12, cursor: "pointer", fontWeight: 600,
+          }}>⬇ {b.label}</button>
+        ))}
+      </div>
+
+      {/* Uploaded files */}
+      <h4 style={{ color: C.supply, marginBottom: 14, fontSize: 12, letterSpacing: 2 }}>UPLOADED FILES</h4>
+      {filesErr ? (
+        <div style={{ color: C.muted, fontSize: 13, padding: "16px 0" }}>ℹ️ {filesErr}</div>
+      ) : loading ? <Spinner /> : files.length === 0 ? (
+        <div style={{ color: C.muted, fontSize: 14, padding: "28px 0" }}>No uploaded files yet.</div>
+      ) : (
+        <div style={{ overflowX: "auto", background: C.surface, borderRadius: 8, border: "1px solid rgba(0,212,255,0.1)" }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+            <thead>
+              <tr style={{ borderBottom: "1px solid rgba(0,212,255,0.2)" }}>
+                {["File Name", "Rows", "Size", "Date", "Description", "Actions"].map(h => (
+                  <th key={h} style={{ padding: "12px 14px", textAlign: "left", color: C.supply, fontFamily: "monospace", fontSize: 10 }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {files.map((f, i) => (
+                <tr key={i} style={{ borderBottom: "1px solid rgba(255,255,255,0.04)", background: i % 2 ? C.surface2 : "transparent" }}>
+                  <td style={{ padding: "10px 14px", fontWeight: 600 }}>{f.original_name}</td>
+                  <td style={{ padding: "10px 14px", color: C.muted, fontFamily: "monospace" }}>{f.rows}</td>
+                  <td style={{ padding: "10px 14px", color: C.muted }}>{(f.file_size / 1024).toFixed(1)} KB</td>
+                  <td style={{ padding: "10px 14px", color: C.muted }}>{f.uploaded_at?.slice(0, 10)}</td>
+                  <td style={{ padding: "10px 14px", color: C.muted, fontSize: 11 }}>{f.description || "—"}</td>
+                  <td style={{ padding: "10px 14px" }}>
+                    <div style={{ display: "flex", gap: 6 }}>
+                      <button onClick={() => loadPreview(f.id, f.original_name)} style={{
+                        background: "rgba(0,194,255,0.1)", border: "1px solid rgba(0,194,255,0.3)",
+                        color: C.supply, padding: "4px 10px", borderRadius: 4, fontSize: 11, cursor: "pointer",
+                      }}>👁 Preview</button>
+                      <button onClick={() => download(f.id, f.original_name)} style={{
+                        background: "rgba(0,255,136,0.08)", border: "1px solid rgba(0,255,136,0.3)",
+                        color: C.consumption, padding: "4px 10px", borderRadius: 4, fontSize: 11, cursor: "pointer",
+                      }}>⬇ Download</button>
+                      {isAdmin && (
+                        <button onClick={() => del(f.id)} style={{
+                          background: "rgba(255,77,109,0.1)", border: "1px solid rgba(255,77,109,0.3)",
+                          color: C.leakage, padding: "4px 10px", borderRadius: 4, fontSize: 11, cursor: "pointer",
+                        }}>🗑 Delete</button>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* Preview modal */}
+      {preview && (
+        <div style={{
+          position: "fixed", inset: 0, background: "rgba(0,0,0,0.7)",
+          display: "flex", alignItems: "center", justifyContent: "center", zIndex: 2000, padding: 20,
+        }}>
+          <div style={{
+            background: C.surface, border: "1px solid rgba(0,212,255,0.2)",
+            borderRadius: 12, padding: 28, width: "100%", maxWidth: 900,
+            maxHeight: "80vh", overflow: "auto",
+          }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18 }}>
+              <h3 style={{ margin: 0, color: C.supply }}>Preview — {preview.name}</h3>
+              <button onClick={() => setPreview(null)} style={{
+                background: "rgba(255,77,109,0.1)", border: "1px solid rgba(255,77,109,0.3)",
+                color: C.leakage, padding: "6px 14px", borderRadius: 5, cursor: "pointer",
+              }}>✕ Close</button>
+            </div>
+            {preview.rows?.length > 0 && (
+              <div style={{ overflowX: "auto" }}>
+                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11 }}>
+                  <thead>
+                    <tr style={{ borderBottom: "1px solid rgba(0,212,255,0.2)" }}>
+                      {Object.keys(preview.rows[0]).map(k => (
+                        <th key={k} style={{ padding: "8px 12px", textAlign: "left", color: C.supply, fontFamily: "monospace", fontSize: 9 }}>{k}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {preview.rows.map((r, i) => (
+                      <tr key={i} style={{ borderBottom: "1px solid rgba(255,255,255,0.04)", background: i % 2 ? C.surface2 : "transparent" }}>
+                        {Object.values(r).map((v, j) => (
+                          <td key={j} style={{ padding: "7px 12px", color: C.muted }}>{v}</td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
+// INSIGHTS BOX  — rich card design
+// ─────────────────────────────────────────────────────────────
+function InsightsBox() {
+  const FEATURES = [
+    { icon: "💧", title: "City-Wide Supply Forecast",          desc: "Predicts daily water across all 27 Panvel zones (avg ~211 MLD) for up to 365 days using Gradient Boosting ML.",      color: "#00c2ff" },
+    { icon: "📍", title: "Zone-Level Leakage Detection",       desc: "Shows leakage % per zone vs the official 9.52% PMC benchmark — flags CRITICAL, HIGH, MODERATE & NORMAL zones.",        color: "#00ff88" },
+    { icon: "📅", title: "181 Days of Historical Trends",      desc: "Actual supply, consumption & leakage data from Sep 2025 – Feb 2026 aligned with IIT Bombay PMC ESR 2024-25.",          color: "#00c2ff" },
+    { icon: "🤖", title: "High-Accuracy ML (R² = 0.9802)",     desc: "29 Gradient Boosting models trained on 18 lag & calendar features achieve 98% city-level prediction accuracy.",          color: "#00ff88" },
+    { icon: "🔔", title: "Smart Alert Classification",         desc: "Auto-classifies every zone post-prediction: CRITICAL ≥20%, HIGH ≥15%, MODERATE ≥10%, NORMAL <10%.",                    color: "#00c2ff" },
+  ];
+  const LIMITATIONS = [
+    { icon: "📡", title: "No Live IoT Sensor Data",             desc: "Values come from official PMC PDF figures via a mathematical model — not real-time pipe sensors or smart meters.",       color: "#ff4d6d" },
+    { icon: "📉", title: "Accuracy Drops Beyond 180 Days",      desc: "Rolling prediction error compounds as the model feeds its own outputs as inputs — R² drops from 0.98 to ~0.89.",        color: "#ffb800" },
+    { icon: "🌧️", title: "Weather & Events Not Included",       desc: "Monsoon surges, droughts, dam overflow and pipe bursts are not factored into the forecast model.",                       color: "#ff4d6d" },
+    { icon: "🏘️", title: "Leakage Fixed at 9.52% Per Zone",    desc: "The 9.52% is the annual average from IIT Bombay ESR 2024-25. Daily per-zone variation is not tracked live.",            color: "#ffb800" },
+    { icon: "😴", title: "Server Cold Start (Free Tier)",        desc: "Render free tier sleeps after 15 min idle. First API call after inactivity takes 30–60 seconds to wake up.",            color: "#ff4d6d" },
+  ];
+
+  return (
+    <div style={{
+      marginTop: 32, background: "linear-gradient(135deg, #0a1628 0%, #0d1a2b 100%)",
+      border: "1px solid rgba(0,212,255,0.2)", borderRadius: 16, padding: "32px 28px 28px",
+      boxShadow: "0 8px 40px rgba(0,0,0,0.4)",
+    }}>
+      {/* Header */}
+      <div style={{ textAlign: "center", marginBottom: 32 }}>
+        <div style={{
+          display: "inline-flex", alignItems: "center", gap: 8,
+          background: "rgba(0,212,255,0.08)", border: "1px solid rgba(0,212,255,0.25)",
+          padding: "6px 18px", borderRadius: 20, marginBottom: 14,
+        }}>
+          <span style={{ fontSize: 14 }}>💡</span>
+          <span style={{ color: "#00c2ff", fontSize: 11, fontFamily: "monospace", letterSpacing: 3, fontWeight: 700 }}>
+            DASHBOARD INSIGHTS
+          </span>
+        </div>
+        <h2 style={{ margin: "0 0 8px", fontSize: "1.3rem", fontWeight: 800, color: "white" }}>
+          What This Dashboard Tells You
+        </h2>
+        <p style={{ color: C.muted, fontSize: 13, margin: 0 }}>
+          5 capabilities this system provides · 5 known limitations to be aware of
+        </p>
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24 }}>
+
+        {/* ── FEATURES COLUMN ── */}
+        <div>
+          <div style={{
+            display: "flex", alignItems: "center", gap: 10, marginBottom: 16,
+            padding: "10px 16px", background: "rgba(0,255,136,0.06)",
+            border: "1px solid rgba(0,255,136,0.2)", borderRadius: 8,
+          }}>
+            <span style={{ fontSize: 18 }}>✅</span>
+            <span style={{ color: "#00ff88", fontWeight: 800, fontSize: 12, letterSpacing: 1 }}>WHAT IT DOES WELL</span>
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            {FEATURES.map((f, i) => (
+              <div key={i} style={{
+                display: "flex", gap: 14, padding: "14px 16px",
+                background: "rgba(255,255,255,0.02)",
+                border: "1px solid rgba(255,255,255,0.06)",
+                borderLeft: `3px solid ${f.color}`,
+                borderRadius: 8, transition: "all 0.2s",
+              }}>
+                <div style={{
+                  width: 36, height: 36, borderRadius: 8, flexShrink: 0,
+                  background: `${f.color}15`,
+                  border: `1px solid ${f.color}30`,
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  fontSize: 18,
+                }}>{f.icon}</div>
+                <div>
+                  <div style={{ color: "white", fontWeight: 700, fontSize: 12, marginBottom: 4 }}>{f.title}</div>
+                  <div style={{ color: C.muted, fontSize: 11, lineHeight: 1.6 }}>{f.desc}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* ── LIMITATIONS COLUMN ── */}
+        <div>
+          <div style={{
+            display: "flex", alignItems: "center", gap: 10, marginBottom: 16,
+            padding: "10px 16px", background: "rgba(255,77,109,0.06)",
+            border: "1px solid rgba(255,77,109,0.2)", borderRadius: 8,
+          }}>
+            <span style={{ fontSize: 18 }}>⚠️</span>
+            <span style={{ color: "#ff4d6d", fontWeight: 800, fontSize: 12, letterSpacing: 1 }}>KNOWN LIMITATIONS</span>
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            {LIMITATIONS.map((f, i) => (
+              <div key={i} style={{
+                display: "flex", gap: 14, padding: "14px 16px",
+                background: "rgba(255,255,255,0.02)",
+                border: "1px solid rgba(255,255,255,0.06)",
+                borderLeft: `3px solid ${f.color}`,
+                borderRadius: 8,
+              }}>
+                <div style={{
+                  width: 36, height: 36, borderRadius: 8, flexShrink: 0,
+                  background: `${f.color}15`,
+                  border: `1px solid ${f.color}30`,
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  fontSize: 18,
+                }}>{f.icon}</div>
+                <div>
+                  <div style={{ color: "white", fontWeight: 700, fontSize: 12, marginBottom: 4 }}>{f.title}</div>
+                  <div style={{ color: C.muted, fontSize: 11, lineHeight: 1.6 }}>{f.desc}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Footer bar */}
+      <div style={{
+        marginTop: 24, padding: "12px 16px",
+        background: "rgba(0,212,255,0.04)", border: "1px solid rgba(0,212,255,0.12)",
+        borderRadius: 8, display: "flex", alignItems: "center", gap: 10,
+      }}>
+        <span style={{ fontSize: 16 }}>📋</span>
+        <div style={{ color: C.muted, fontSize: 11, lineHeight: 1.7 }}>
+          <span style={{ color: "#00c2ff", fontWeight: 700 }}>Data Source: </span>
+          PMC Environmental Status Report 2024-25 · IIT Bombay ESED · Dr. Abhishek Chakraborty ·{" "}
+          <span style={{ color: "white" }}>27 Zones · 4,887 Records · 181 Days</span> (Sep 2025 – Feb 2026)
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
+// MAIN DASHBOARD
+// ─────────────────────────────────────────────────────────────
+function Dashboard({
+  tab, setTab,
+  cityData, setCityData,
+  wardData, setWardData,
+  days, setDays,
+  selectedWard, setSelectedWard,
+}) {
+  const { user }                = useAuth();
+  const isAdmin                 = user?.role === "admin";
+  const [wardList, setWardList] = useState([]);
+  const [summary,  setSummary]  = useState({});
+  const [metrics,  setMetrics]  = useState([]);
+  const [historical, setHistorical] = useState([]);
+  const [loading,  setLoading]  = useState({});
+  const [scanning, setScanning] = useState(false);
+  const [error,    setError]    = useState("");
+
+  const setLoad = (k, v) => setLoading(p => ({ ...p, [k]: v }));
 
   const apiGet = useCallback(async (url) => {
     const res = await axios.get(`${API}${url}`, {
@@ -815,7 +925,7 @@ function Dashboard({ tab, setTab }) {
     return res.data;
   }, [user]);
 
-  // Load summary + ward list
+  // Load summary + ward list on mount
   useEffect(() => {
     (async () => {
       try {
@@ -827,7 +937,7 @@ function Dashboard({ tab, setTab }) {
     })();
   }, [apiGet]);
 
-  // Load historical when tab changes
+  // Load historical on tab switch
   useEffect(() => {
     if (tab === "historical") {
       (async () => {
@@ -839,7 +949,7 @@ function Dashboard({ tab, setTab }) {
     }
   }, [tab, apiGet]);
 
-  // Load metrics when tab changes
+  // Load metrics on tab switch
   useEffect(() => {
     if (tab === "metrics") {
       (async () => {
@@ -851,66 +961,92 @@ function Dashboard({ tab, setTab }) {
     }
   }, [tab, apiGet]);
 
+  // ── City predict ─────────────────────────────────────────
   const fetchCity = useCallback(async () => {
     setError(""); setLoad("city", true);
-    try { setCityData(await apiGet(`/predict/city/${days}`)); }
-    catch (e) { setError(e.response?.data?.error || e.message); }
-    finally { setLoad("city", false); }
-  }, [days, apiGet]);
+    try {
+      const result = await apiGet(`/predict/city/${days}`);
+      setCityData(result);
 
+      // background ward scan
+      setScanning(true);
+      try {
+        await apiGet(`/alerts/scan?threshold=10&days=${Math.min(days, 90)}`);
+      } catch (_) {}
+      finally { setScanning(false); }
+
+    } catch (e) {
+      setError(e.response?.data?.error || e.message);
+    } finally { setLoad("city", false); }
+  }, [days, apiGet, setCityData]);
+
+  // ── Ward predict ─────────────────────────────────────────
   const fetchWard = useCallback(async () => {
     setError(""); setLoad("ward", true);
     try { setWardData(await apiGet(`/predict/ward/${selectedWard}/${days}`)); }
     catch (e) { setError(e.response?.data?.error || e.message); }
     finally { setLoad("ward", false); }
-  }, [selectedWard, days, apiGet]);
+  }, [selectedWard, days, apiGet, setWardData]);
 
-  const isAdmin = user?.role === "admin";
+  // Downsample chart data for large day ranges
+  const sampleCity = days <= 30 ? cityData
+    : days <= 90  ? cityData.filter((_, i) => i % 3  === 0)
+    : days <= 180 ? cityData.filter((_, i) => i % 7  === 0)
+    : cityData.filter((_, i) => i % 14 === 0);
 
-  // Special tabs that go outside the dashboard layout
-  if (tab === "upload")    return isAdmin ? <UploadPage />   : null;
-  if (tab === "users")     return isAdmin ? <UsersPage />    : null;
+  const sampleWard = days <= 30 ? wardData
+    : days <= 90  ? wardData.filter((_, i) => i % 3  === 0)
+    : days <= 180 ? wardData.filter((_, i) => i % 7  === 0)
+    : wardData.filter((_, i) => i % 14 === 0);
+
+  const avgOf = (data, key) => data.length
+    ? (data.reduce((a, r) => a + (r[key] || 0), 0) / data.length).toFixed(3)
+    : null;
+
+  // route special tabs
+  if (tab === "upload")    return isAdmin ? <UploadPage />    : null;
+  if (tab === "users")     return isAdmin ? <UsersPage />     : null;
   if (tab === "datafiles") return <DataFilesPage />;
 
   return (
-    <div style={{ padding: "28px 24px" }}>
+    <div style={{ padding: "clamp(16px,3vw,28px) clamp(16px,3vw,24px)" }}>
 
-      {/* ── KPI Strip — exactly same as original ── */}
+      {/* ── Summary KPIs (always visible on city tab) ── */}
       {tab === "city" && (
-        <div style={{ display:"flex", gap:14, flexWrap:"wrap", marginBottom:28 }}>
-          <KpiCard label="Last Data Date"    value={summary.Last_Data_Date}                color={C.supply} />
-          <KpiCard label="Avg Daily Supply"  value={summary.Avg_Daily_Supply_MLD}  unit="MLD" color={C.supply}  sub="Historical avg" />
-          <KpiCard label="Avg Daily Leakage" value={summary.Avg_Daily_Leakage_MLD} unit="MLD" color={C.leakage} sub={`${summary.Avg_Leakage_Percentage}% of supply`} />
-          <KpiCard label="Worst Leakage Zone" value={summary.Highest_Leakage_Ward}            color={C.warning}  sub={`Zone ${summary.Highest_Leakage_Ward_No}`} />
-          <KpiCard label="Model R²"          value={summary.Model_Accuracy?.City_Supply_R2}   color={C.consumption} sub="27 Zones · Gradient Boosting" />
+        <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 20 }}>
+          <KpiCard label="Last Data Date"     value={summary.Last_Data_Date}                  color={C.supply} />
+          <KpiCard label="Avg Daily Supply"   value={summary.Avg_Daily_Supply_MLD}   unit="MLD" color={C.supply}      sub="Historical avg" />
+          <KpiCard label="Avg Daily Leakage"  value={summary.Avg_Daily_Leakage_MLD}  unit="MLD" color={C.leakage}
+            sub={summary.Avg_Leakage_Percentage ? `${summary.Avg_Leakage_Percentage}% of supply` : ""} />
+          <KpiCard label="Worst Leakage Zone" value={summary.Highest_Leakage_Ward}              color={C.warning}     sub={`Zone ${summary.Highest_Leakage_Ward_No}`} />
+          <KpiCard label="Model R²"           value={summary.Model_Accuracy?.City_Supply_R2}   color={C.consumption} sub="27 Zones · Gradient Boosting" />
         </div>
       )}
 
       <ErrorBanner msg={error} />
 
-      {/* ── Controls — same layout as original ── */}
+      {/* ── Controls (city + ward tabs) ── */}
       {(tab === "city" || tab === "ward") && (
         <div style={{
-          display:"flex", gap:12, alignItems:"center", flexWrap:"wrap",
-          marginBottom:24, background:C.surface,
-          border:"1px solid rgba(0,212,255,0.15)",
-          borderRadius:8, padding:"16px 20px",
+          background: C.surface, border: "1px solid rgba(0,212,255,0.15)",
+          borderRadius: 8, padding: "14px 18px", marginBottom: 20,
+          display: "flex", gap: 12, alignItems: "flex-end", flexWrap: "wrap",
         }}>
           <div>
-            <label style={{ color:C.muted, fontSize:11, letterSpacing:2, display:"block", marginBottom:4 }}>FORECAST HORIZON</label>
+            <div style={{ color: C.muted, fontSize: 10, letterSpacing: 2, marginBottom: 6 }}>FORECAST HORIZON</div>
             <select value={days} onChange={e => setDays(Number(e.target.value))}
-              style={{ background:C.surface2, color:"white", border:"1px solid rgba(0,212,255,0.2)", borderRadius:5, padding:"8px 12px", fontSize:13 }}>
-              {[1,7,14,30,60,90,180,365].map(d => (
-                <option key={d} value={d}>Next {d} Day{d>1?"s":""}</option>
+              style={{ background: C.surface2, color: "white", border: "1px solid rgba(0,212,255,0.2)", borderRadius: 5, padding: "9px 14px", fontSize: 13 }}>
+              {HORIZON_OPTIONS.map(o => (
+                <option key={o.days} value={o.days}>{o.label}</option>
               ))}
             </select>
           </div>
 
           {tab === "ward" && (
             <div>
-              <label style={{ color:C.muted, fontSize:11, letterSpacing:2, display:"block", marginBottom:4 }}>SELECT WARD</label>
+              <div style={{ color: C.muted, fontSize: 10, letterSpacing: 2, marginBottom: 6 }}>SELECT WARD</div>
               <select value={selectedWard} onChange={e => setSelectedWard(Number(e.target.value))}
-                style={{ background:C.surface2, color:"white", border:"1px solid rgba(0,212,255,0.2)", borderRadius:5, padding:"8px 12px", fontSize:13 }}>
+                style={{ background: C.surface2, color: "white", border: "1px solid rgba(0,212,255,0.2)", borderRadius: 5, padding: "9px 14px", fontSize: 13 }}>
                 {wardList.map(w => (
                   <option key={w.Ward_No} value={w.Ward_No}>Ward {w.Ward_No} — {w.Ward_Name}</option>
                 ))}
@@ -918,78 +1054,84 @@ function Dashboard({ tab, setTab }) {
             </div>
           )}
 
-          <div style={{ marginTop:18 }}>
-            <button
-              onClick={tab === "ward" ? fetchWard : fetchCity}
-              disabled={loading.city || loading.ward}
-              style={{
-                background:"rgba(0,212,255,0.15)", border:"1px solid rgba(0,212,255,0.4)",
-                color:C.supply, padding:"10px 24px", borderRadius:5,
-                fontWeight:700, fontSize:13, letterSpacing:1,
-                cursor: loading.city||loading.ward ? "not-allowed":"pointer",
-                opacity: loading.city||loading.ward ? 0.6:1,
-              }}>
-              {loading.city || loading.ward ? "⏳ Loading..." : "▶ PREDICT"}
-            </button>
-          </div>
+          <button
+            onClick={tab === "ward" ? fetchWard : fetchCity}
+            disabled={loading.city || loading.ward || scanning}
+            style={{
+              background: "rgba(0,194,255,0.12)", border: "1px solid rgba(0,194,255,0.4)",
+              color: C.supply, padding: "10px 26px", borderRadius: 5,
+              fontWeight: 700, fontSize: 13, letterSpacing: 1,
+              cursor: loading.city || loading.ward || scanning ? "not-allowed" : "pointer",
+              opacity: loading.city || loading.ward || scanning ? 0.6 : 1,
+            }}>
+            {loading.city || loading.ward ? "⏳ Predicting..."
+              : scanning ? "🔍 Scanning wards..." : "▶ PREDICT"}
+          </button>
 
-          {(cityData.length > 0 || wardData.length > 0) && !loading.city && !loading.ward && (
-            <div style={{ color:C.muted, fontSize:11, paddingTop:18 }}>
-              {tab==="city"
+          {scanning && (
+            <div style={{ display: "flex", alignItems: "center", gap: 8, color: C.warning, fontSize: 12 }}>
+              <span style={{ display: "inline-block", animation: "spin 1s linear infinite" }}>⚙️</span>
+              Scanning all 27 zones for leakage alerts...
+            </div>
+          )}
+
+          {((tab === "city" && cityData.length > 0) || (tab === "ward" && wardData.length > 0)) && !loading.city && !loading.ward && !scanning && (
+            <div style={{ color: C.muted, fontSize: 11, paddingBottom: 2 }}>
+              {tab === "city"
                 ? `✅ ${cityData.length} days · ${cityData[0]?.Date} → ${cityData[cityData.length-1]?.Date}`
-                : wardData.length > 0 ? `✅ ${wardData.length} days` : ""}
+                : `✅ ${wardData.length} days`}
             </div>
           )}
         </div>
       )}
 
-      {/* ── Tabs — same style as original ── */}
+      {/* ── Tab bar ── */}
       <div style={{
-        display:"flex", gap:4,
-        background:C.surface, border:"1px solid rgba(0,212,255,0.15)",
-        borderRadius:8, padding:6, marginBottom:28, flexWrap:"wrap",
+        display: "flex", gap: 4,
+        background: C.surface, border: "1px solid rgba(0,212,255,0.15)",
+        borderRadius: 8, padding: 6, marginBottom: 28, flexWrap: "wrap",
       }}>
         {[
-          { id:"city",       label:"🏙 City Forecast"  },
-          { id:"ward",       label:"🏘 Ward Forecast"  },
-          { id:"historical", label:"📅 Historical"     },
-          { id:"metrics",    label:"📊 Model Metrics"  },
-          { id:"analytics",  label:"📈 Analytics"      },
-          { id:"datafiles",  label:"📁 Data Files"     },
+          { id: "city",       label: "🏙 City Forecast"  },
+          { id: "ward",       label: "🏘 Ward Forecast"  },
+          { id: "historical", label: "📅 Historical"     },
+          { id: "metrics",    label: "📊 Model Metrics"  },
+          { id: "analytics",  label: "📈 Analytics"      },
+          { id: "datafiles",  label: "📁 Data Files"     },
           ...(isAdmin ? [
-            { id:"upload", label:"⬆ Upload" },
-            { id:"users",  label:"👥 Users"  },
+            { id: "upload", label: "⬆ Upload" },
+            { id: "users",  label: "👥 Users"  },
           ] : []),
         ].map(t => (
           <button key={t.id} onClick={() => setTab(t.id)} style={{
-            flex:1, minWidth:100, padding:"10px 12px",
-            background: tab===t.id ? "rgba(0,212,255,0.12)" : "transparent",
-            border:     tab===t.id ? "1px solid rgba(0,212,255,0.3)" : "1px solid transparent",
-            borderRadius:5, color: tab===t.id ? C.supply : C.muted,
-            fontWeight:600, fontSize:12, cursor:"pointer", transition:"all 0.2s",
+            flex: 1, minWidth: 100, padding: "10px 12px",
+            background: tab === t.id ? "rgba(0,212,255,0.12)" : "transparent",
+            border:     tab === t.id ? "1px solid rgba(0,212,255,0.3)" : "1px solid transparent",
+            borderRadius: 5, color: tab === t.id ? C.supply : C.muted,
+            fontWeight: 600, fontSize: 12, cursor: "pointer", transition: "all 0.2s",
           }}>{t.label}</button>
         ))}
       </div>
 
-      {/* ─────── CITY TAB — identical to original ─────── */}
+      {/* ─────── CITY TAB ─────── */}
       {tab === "city" && (
         loading.city ? <Spinner /> : cityData.length === 0 ? (
-          <div style={{ textAlign:"center", color:C.muted, padding:60, fontSize:14 }}>
+          <div style={{ textAlign: "center", color: C.muted, padding: "60px 20px", fontSize: 14 }}>
             Select a forecast horizon and click PREDICT
           </div>
         ) : (
           <>
-            <div style={{ display:"flex", gap:14, flexWrap:"wrap", marginBottom:28 }}>
-              <KpiCard label="Avg Predicted Supply"      value={(cityData.reduce((a,r)=>a+r.Predicted_Supply_MLD,0)/cityData.length).toFixed(2)}      unit="MLD" color={C.supply} />
-              <KpiCard label="Avg Predicted Consumption" value={(cityData.reduce((a,r)=>a+r.Predicted_Consumption_MLD,0)/cityData.length).toFixed(2)}  unit="MLD" color={C.consumption} />
-              <KpiCard label="Avg Predicted Leakage"     value={(cityData.reduce((a,r)=>a+r.Predicted_Leakage_MLD,0)/cityData.length).toFixed(2)}      unit="MLD" color={C.leakage} />
-              <KpiCard label="Avg Leakage %"             value={(cityData.reduce((a,r)=>a+r.Leakage_Percentage,0)/cityData.length).toFixed(1)}          unit="%" color={C.warning} />
+            <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 20 }}>
+              <KpiCard label="Avg Predicted Supply"      value={avgOf(cityData, "Predicted_Supply_MLD")}      unit="MLD" color={C.supply} />
+              <KpiCard label="Avg Predicted Consumption" value={avgOf(cityData, "Predicted_Consumption_MLD")} unit="MLD" color={C.consumption} />
+              <KpiCard label="Avg Predicted Leakage"     value={avgOf(cityData, "Predicted_Leakage_MLD")}     unit="MLD" color={C.leakage} />
+              <KpiCard label="Avg Leakage %"             value={avgOf(cityData, "Leakage_Percentage")}         unit="%"   color={C.warning} />
             </div>
 
-            <h3 style={{ marginBottom:14, color:"#ccd6f6" }}>Supply & Consumption Forecast</h3>
-            <div style={{ background:C.surface, borderRadius:10, padding:20, marginBottom:24, border:"1px solid rgba(0,212,255,0.1)" }}>
-              <ResponsiveContainer width="100%" height={280}>
-                <AreaChart data={cityData}>
+            <h3 style={{ marginBottom: 12, color: "#ccd6f6", fontSize: 14 }}>Supply & Consumption Forecast</h3>
+            <div style={{ background: C.surface, borderRadius: 10, padding: "clamp(12px,3vw,20px)", marginBottom: 16, border: "1px solid rgba(0,212,255,0.1)" }}>
+              <ResponsiveContainer width="100%" height={260}>
+                <AreaChart data={sampleCity}>
                   <defs>
                     <linearGradient id="gS" x1="0" y1="0" x2="0" y2="1">
                       <stop offset="5%"  stopColor={C.supply}      stopOpacity={0.25} />
@@ -1000,56 +1142,67 @@ function Dashboard({ tab, setTab }) {
                       <stop offset="95%" stopColor={C.consumption} stopOpacity={0} />
                     </linearGradient>
                   </defs>
-                  <CartesianGrid stroke="rgba(255,255,255,0.05)" />
-                  <XAxis dataKey="Date" tick={{ fill:C.muted, fontSize:11 }} tickLine={false} />
-                  <YAxis tick={{ fill:C.muted, fontSize:11 }} tickLine={false} unit=" MLD" />
+                  <CartesianGrid stroke="rgba(255,255,255,0.04)" />
+                  <XAxis dataKey="Date" tick={{ fill: C.muted, fontSize: 10 }} tickLine={false} interval={Math.floor(sampleCity.length / 8)} />
+                  <YAxis tick={{ fill: C.muted, fontSize: 10 }} tickLine={false} unit=" MLD" width={60} />
                   <Tooltip content={<CustomTooltip />} />
-                  <Legend wrapperStyle={{ color:C.muted, fontSize:12 }} />
+                  <Legend wrapperStyle={{ color: C.muted, fontSize: 12 }} />
                   <Area type="monotone" dataKey="Predicted_Supply_MLD"      stroke={C.supply}      fill="url(#gS)" strokeWidth={2} name="Supply"      dot={false} />
                   <Area type="monotone" dataKey="Predicted_Consumption_MLD" stroke={C.consumption} fill="url(#gC)" strokeWidth={2} name="Consumption" dot={false} />
                 </AreaChart>
               </ResponsiveContainer>
             </div>
 
-            <h3 style={{ marginBottom:14, color:"#ccd6f6" }}>Leakage Forecast</h3>
-            <div style={{ background:C.surface, borderRadius:10, padding:20, marginBottom:24, border:"1px solid rgba(0,212,255,0.1)" }}>
-              <ResponsiveContainer width="100%" height={220}>
-                <BarChart data={cityData}>
-                  <CartesianGrid stroke="rgba(255,255,255,0.05)" />
-                  <XAxis dataKey="Date" tick={{ fill:C.muted, fontSize:11 }} tickLine={false} />
-                  <YAxis tick={{ fill:C.muted, fontSize:11 }} tickLine={false} unit=" MLD" />
+            <h3 style={{ marginBottom: 12, color: "#ccd6f6", fontSize: 14 }}>Leakage Forecast</h3>
+            <div style={{ background: C.surface, borderRadius: 10, padding: "clamp(12px,3vw,20px)", marginBottom: 16, border: "1px solid rgba(0,212,255,0.1)" }}>
+              <ResponsiveContainer width="100%" height={200}>
+                <BarChart data={sampleCity}>
+                  <CartesianGrid stroke="rgba(255,255,255,0.04)" />
+                  <XAxis dataKey="Date" tick={{ fill: C.muted, fontSize: 10 }} tickLine={false} interval={Math.floor(sampleCity.length / 8)} />
+                  <YAxis tick={{ fill: C.muted, fontSize: 10 }} tickLine={false} unit=" MLD" width={60} />
                   <Tooltip content={<CustomTooltip />} />
-                  <Bar dataKey="Predicted_Leakage_MLD" fill={C.consumption} name="Leakage" radius={[3,3,0,0]} />
+                  <Bar dataKey="Predicted_Leakage_MLD" name="Leakage" radius={[3, 3, 0, 0]}>
+                    {sampleCity.map((r, i) => (
+                      <Cell key={i} fill={
+                        r.Leakage_Percentage >= 20 ? "#ff2d55" :
+                        r.Leakage_Percentage >= 15 ? C.leakage :
+                        r.Leakage_Percentage >= 10 ? C.warning : C.consumption
+                      } />
+                    ))}
+                  </Bar>
                 </BarChart>
               </ResponsiveContainer>
             </div>
 
-            <h3 style={{ marginBottom:14, color:"#ccd6f6" }}>Detailed Predictions</h3>
-            <div style={{ overflowX:"auto", background:C.surface, borderRadius:8, border:"1px solid rgba(0,212,255,0.1)" }}>
-              <table style={{ width:"100%", borderCollapse:"collapse", fontSize:12 }}>
+            <h3 style={{ marginBottom: 12, color: "#ccd6f6", fontSize: 14 }}>Detailed Predictions</h3>
+            <div style={{ overflowX: "auto", background: C.surface, borderRadius: 8, border: "1px solid rgba(0,212,255,0.1)", WebkitOverflowScrolling: "touch" }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12, minWidth: 600 }}>
                 <thead>
-                  <tr style={{ borderBottom:"1px solid rgba(0,212,255,0.2)" }}>
-                    {["Date","Supply MLD","Consumption MLD","Leakage MLD","Leakage %"].map(h => (
-                      <th key={h} style={{ padding:"12px 14px", textAlign:"left", color:C.supply, fontFamily:"monospace", letterSpacing:1, fontSize:10 }}>{h}</th>
+                  <tr style={{ borderBottom: "1px solid rgba(0,212,255,0.2)" }}>
+                    {["Date", "Supply MLD", "Consumption MLD", "Leakage MLD", "Leakage %", "Status"].map(h => (
+                      <th key={h} style={{ padding: "10px 12px", textAlign: "left", color: C.supply, fontFamily: "monospace", fontSize: 10, letterSpacing: 1 }}>{h}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
-                  {cityData.map((row,i) => (
-                    <tr key={i} style={{ borderBottom:"1px solid rgba(255,255,255,0.04)", background:i%2?C.surface2:"transparent" }}>
-                      <td style={{ padding:"10px 14px", fontFamily:"monospace", color:C.muted }}>{row.Date}</td>
-                      <td style={{ padding:"10px 14px", color:C.supply,      fontWeight:600 }}>{row.Predicted_Supply_MLD}</td>
-                      <td style={{ padding:"10px 14px", color:C.consumption, fontWeight:600 }}>{row.Predicted_Consumption_MLD}</td>
-                      <td style={{ padding:"10px 14px", color:C.leakage,     fontWeight:600 }}>{row.Predicted_Leakage_MLD}</td>
-                      <td style={{ padding:"10px 14px" }}>
-                        <span style={{
-                          background: row.Leakage_Percentage>15?"rgba(255,77,109,0.15)":row.Leakage_Percentage>10?"rgba(255,184,0,0.15)":"rgba(0,255,136,0.1)",
-                          color: row.Leakage_Percentage>15?C.leakage:row.Leakage_Percentage>10?C.warning:C.consumption,
-                          padding:"2px 8px", borderRadius:3, fontFamily:"monospace",
-                        }}>{row.Leakage_Percentage}%</span>
-                      </td>
-                    </tr>
-                  ))}
+                  {cityData.map((row, i) => {
+                    const lv = row.Leakage_Percentage >= 20 ? "CRITICAL" : row.Leakage_Percentage >= 15 ? "HIGH" : row.Leakage_Percentage >= 10 ? "MODERATE" : "NORMAL";
+                    const lc = lv === "CRITICAL" ? "#ff2d55" : lv === "HIGH" ? C.leakage : lv === "MODERATE" ? C.warning : C.consumption;
+                    return (
+                      <tr key={i} style={{ borderBottom: "1px solid rgba(255,255,255,0.04)", background: i % 2 ? C.surface2 : "transparent" }}>
+                        <td style={{ padding: "9px 12px", fontFamily: "monospace", color: C.muted }}>{row.Date}</td>
+                        <td style={{ padding: "9px 12px", color: C.supply,      fontWeight: 600 }}>{row.Predicted_Supply_MLD}</td>
+                        <td style={{ padding: "9px 12px", color: C.consumption, fontWeight: 600 }}>{row.Predicted_Consumption_MLD}</td>
+                        <td style={{ padding: "9px 12px", color: C.leakage,     fontWeight: 600 }}>{row.Predicted_Leakage_MLD}</td>
+                        <td style={{ padding: "9px 12px" }}>
+                          <span style={{ background: `${lc}18`, color: lc, padding: "2px 8px", borderRadius: 3, fontFamily: "monospace", border: `1px solid ${lc}44` }}>
+                            {row.Leakage_Percentage}%
+                          </span>
+                        </td>
+                        <td style={{ padding: "9px 12px", fontSize: 10, color: lc, fontWeight: 700 }}>{lv}</td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -1057,151 +1210,68 @@ function Dashboard({ tab, setTab }) {
         )
       )}
 
-      {/* ─────── WARD TAB — identical to original ─────── */}
+      {/* ─────── WARD TAB ─────── */}
       {tab === "ward" && (
         loading.ward ? <Spinner /> : wardData.length === 0 ? (
-          <div style={{ textAlign:"center", color:C.muted, padding:60, fontSize:14 }}>
+          <div style={{ textAlign: "center", color: C.muted, padding: "60px 20px", fontSize: 14 }}>
             Select a ward and click PREDICT
           </div>
         ) : (
           <>
-            <h3 style={{ marginBottom:14 }}>
+            <h3 style={{ marginBottom: 14 }}>
               Ward {wardData[0]?.Ward_No} — {wardData[0]?.Ward_Name} · {days}-Day Forecast
             </h3>
-            <div style={{ display:"flex", gap:14, flexWrap:"wrap", marginBottom:20 }}>
-              <KpiCard label="Avg Supply"      value={(wardData.reduce((a,r)=>a+r.Predicted_Supply_MLD,0)/wardData.length).toFixed(3)} unit="MLD" color={C.supply} />
-              <KpiCard label="Avg Consumption" value={(wardData.reduce((a,r)=>a+r.Predicted_Consumption_MLD,0)/wardData.length).toFixed(3)} unit="MLD" color={C.consumption} />
-              <KpiCard label="Avg Leakage"     value={(wardData.reduce((a,r)=>a+r.Predicted_Leakage_MLD,0)/wardData.length).toFixed(3)} unit="MLD" color={C.leakage} />
-              <KpiCard label="Avg Leakage %"   value={wardData[0]?.Leakage_Percentage} unit="%" color={C.warning} />
+            <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 20 }}>
+              <KpiCard label="Avg Supply"      value={avgOf(wardData, "Predicted_Supply_MLD")}      unit="MLD" color={C.supply} />
+              <KpiCard label="Avg Consumption" value={avgOf(wardData, "Predicted_Consumption_MLD")} unit="MLD" color={C.consumption} />
+              <KpiCard label="Avg Leakage"     value={avgOf(wardData, "Predicted_Leakage_MLD")}     unit="MLD" color={C.leakage} />
+              <KpiCard label="Leakage %"       value={wardData[0]?.Leakage_Percentage}              unit="%" color={C.warning} />
             </div>
-            <div style={{ background:C.surface, borderRadius:10, padding:20, marginBottom:24, border:"1px solid rgba(0,212,255,0.1)" }}>
-              <ResponsiveContainer width="100%" height={280}>
-                <AreaChart data={wardData}>
+
+            <div style={{ background: C.surface, borderRadius: 10, padding: "clamp(12px,3vw,20px)", marginBottom: 16, border: "1px solid rgba(0,212,255,0.1)" }}>
+              <ResponsiveContainer width="100%" height={260}>
+                <AreaChart data={sampleWard}>
                   <defs>
                     <linearGradient id="wS" x1="0" y1="0" x2="0" y2="1">
                       <stop offset="5%"  stopColor={C.supply} stopOpacity={0.25} />
                       <stop offset="95%" stopColor={C.supply} stopOpacity={0} />
                     </linearGradient>
                   </defs>
-                  <CartesianGrid stroke="rgba(255,255,255,0.05)" />
-                  <XAxis dataKey="Date" tick={{ fill:C.muted, fontSize:11 }} tickLine={false} />
-                  <YAxis tick={{ fill:C.muted, fontSize:11 }} tickLine={false} unit=" MLD" />
-                  <Tooltip content={<CustomTooltip />} />
-                  <Legend wrapperStyle={{ color:C.muted, fontSize:12 }} />
-                  <Area type="monotone" dataKey="Predicted_Supply_MLD"      stroke={C.supply}      fill="url(#wS)" strokeWidth={2} name="Supply"      dot={false} />
-                  <Area type="monotone" dataKey="Predicted_Consumption_MLD" stroke={C.consumption} fill="none"     strokeWidth={2} name="Consumption" dot={false} />
-                  <Area type="monotone" dataKey="Predicted_Leakage_MLD"     stroke={C.leakage}     fill="none"     strokeWidth={2} name="Leakage"     dot={false} />
-                </AreaChart>
-              </ResponsiveContainer>
-            </div>
-            <div style={{ overflowX:"auto", background:C.surface, borderRadius:8, border:"1px solid rgba(0,212,255,0.1)" }}>
-              <table style={{ width:"100%", borderCollapse:"collapse", fontSize:12 }}>
-                <thead>
-                  <tr style={{ borderBottom:"1px solid rgba(0,212,255,0.2)" }}>
-                    {["Date","Supply MLD","Consumption MLD","Leakage MLD","Leakage %"].map(h => (
-                      <th key={h} style={{ padding:"12px 14px", textAlign:"left", color:C.supply, fontFamily:"monospace", fontSize:10, letterSpacing:1 }}>{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {wardData.map((row,i) => (
-                    <tr key={i} style={{ borderBottom:"1px solid rgba(255,255,255,0.04)", background:i%2?C.surface2:"transparent" }}>
-                      <td style={{ padding:"10px 14px", fontFamily:"monospace", color:C.muted }}>{row.Date}</td>
-                      <td style={{ padding:"10px 14px", color:C.supply,      fontWeight:600 }}>{row.Predicted_Supply_MLD}</td>
-                      <td style={{ padding:"10px 14px", color:C.consumption, fontWeight:600 }}>{row.Predicted_Consumption_MLD}</td>
-                      <td style={{ padding:"10px 14px", color:C.leakage,     fontWeight:600 }}>{row.Predicted_Leakage_MLD}</td>
-                      <td style={{ padding:"10px 14px" }}>
-                        <span style={{
-                          background: row.Leakage_Percentage>15?"rgba(255,77,109,0.15)":"rgba(0,255,136,0.1)",
-                          color: row.Leakage_Percentage>15?C.leakage:C.consumption,
-                          padding:"2px 8px", borderRadius:3, fontFamily:"monospace",
-                        }}>{row.Leakage_Percentage}%</span>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </>
-        )
-      )}
-
-      {/* ─────── HISTORICAL TAB — identical to original ─────── */}
-      {tab === "historical" && (
-        loading.hist ? <Spinner /> : historical.length === 0 ? <Spinner /> : (
-          <>
-            <h3 style={{ marginBottom:14 }}>Historical City Data — Sep 2025 to Feb 2026</h3>
-            <div style={{ background:C.surface, borderRadius:10, padding:20, border:"1px solid rgba(0,212,255,0.1)" }}>
-              <ResponsiveContainer width="100%" height={320}>
-                <AreaChart data={historical}>
-                  <defs>
-                    <linearGradient id="hS" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%"  stopColor={C.supply} stopOpacity={0.3} />
-                      <stop offset="95%" stopColor={C.supply} stopOpacity={0} />
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid stroke="rgba(255,255,255,0.05)" />
-                  <XAxis dataKey="Date" tick={{ fill:C.muted, fontSize:10 }} tickLine={false} interval={14} />
-                  <YAxis tick={{ fill:C.muted, fontSize:11 }} tickLine={false} unit=" MLD" />
-                  <Tooltip content={<CustomTooltip />} />
-                  <Legend wrapperStyle={{ color:C.muted, fontSize:12 }} />
-                  <Area type="monotone" dataKey="Water_Supplied_MLD"  stroke={C.supply}      fill="url(#hS)" strokeWidth={2}   name="Supply"      dot={false} />
-                  <Area type="monotone" dataKey="Water_Consumed_MLD"  stroke={C.consumption} fill="none"     strokeWidth={2}   name="Consumption" dot={false} />
-                  <Area type="monotone" dataKey="Leakage_MLD"         stroke={C.leakage}     fill="none"     strokeWidth={1.5} name="Leakage"     dot={false} />
-                </AreaChart>
-              </ResponsiveContainer>
-            </div>
-          </>
-        )
-      )}
-
-      {/* ─────── METRICS TAB — identical to original ─────── */}
-      {tab === "metrics" && (
-        loading.metrics ? <Spinner /> : (
-          <>
-            <h2 style={{ margin:"0 0 4px 0", fontSize:"1.2rem", fontWeight:800 }}>📊 Model Performance</h2>
-            <p style={{ color:C.muted, fontSize:13, marginBottom:20 }}>
-              Gradient Boosting on daily differences · Train/test split 80/20 chronological
-            </p>
-            <div style={{ display:"flex", gap:14, flexWrap:"wrap", marginBottom:28 }}>
-              <KpiCard label="City Supply R²"      value={summary.Model_Accuracy?.City_Supply_R2}      color={C.supply}      sub="Gradient Boosting" />
-              <KpiCard label="City Consumption R²" value={summary.Model_Accuracy?.City_Consumption_R2} color={C.consumption} />
-              <KpiCard label="City Supply RMSE"    value={summary.Model_Accuracy?.City_Supply_RMSE ? `${Number(summary.Model_Accuracy?.City_Supply_RMSE).toFixed(4)} MLD` : null} color={C.leakage} />
-              <KpiCard label="Total Zones"         value="27 Zones"                                    color={C.warning} />
-            </div>
-            <div style={{ background:C.surface, borderRadius:10, padding:20, marginBottom:20, border:"1px solid rgba(0,212,255,0.1)" }}>
-              <h3 style={{ margin:"0 0 14px 0", fontSize:13, color:"#ccd6f6" }}>Supply R² by Zone (27 total)</h3>
-              <ResponsiveContainer width="100%" height={260}>
-                <BarChart data={metrics} margin={{ bottom:50 }}>
                   <CartesianGrid stroke="rgba(255,255,255,0.04)" />
-                  <XAxis dataKey="Ward_Name" tick={{ fill:C.muted, fontSize:9 }} tickLine={false} angle={-40} textAnchor="end" interval={0} />
-                  <YAxis domain={[0.92,1]} tick={{ fill:C.muted, fontSize:10 }} tickLine={false} />
-                  <Tooltip contentStyle={{ background:C.surface2, border:"1px solid rgba(0,212,255,0.2)", borderRadius:8, fontSize:12 }} labelStyle={{ color:"white" }} />
-                  <Bar dataKey="Supply_R2" fill={C.supply} name="Supply R²" radius={[3,3,0,0]} />
-                </BarChart>
+                  <XAxis dataKey="Date" tick={{ fill: C.muted, fontSize: 10 }} tickLine={false} interval={Math.floor(sampleWard.length / 8)} />
+                  <YAxis tick={{ fill: C.muted, fontSize: 10 }} tickLine={false} unit=" MLD" width={60} />
+                  <Tooltip content={<CustomTooltip />} />
+                  <Legend wrapperStyle={{ color: C.muted, fontSize: 12 }} />
+                  <Area type="monotone" dataKey="Predicted_Supply_MLD"      stroke={C.supply}      fill="url(#wS)" strokeWidth={2} name="Supply"      dot={false} />
+                  <Area type="monotone" dataKey="Predicted_Consumption_MLD" stroke={C.consumption} fill="none"      strokeWidth={2} name="Consumption" dot={false} />
+                  <Area type="monotone" dataKey="Predicted_Leakage_MLD"     stroke={C.leakage}     fill="none"      strokeWidth={2} name="Leakage"     dot={false} />
+                </AreaChart>
               </ResponsiveContainer>
             </div>
-            <div style={{ overflowX:"auto", background:C.surface, borderRadius:8, border:"1px solid rgba(0,212,255,0.1)" }}>
-              <table style={{ width:"100%", borderCollapse:"collapse", fontSize:12 }}>
+
+            <div style={{ overflowX: "auto", background: C.surface, borderRadius: 8, border: "1px solid rgba(0,212,255,0.1)", WebkitOverflowScrolling: "touch" }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12, minWidth: 500 }}>
                 <thead>
-                  <tr style={{ borderBottom:"1px solid rgba(0,212,255,0.2)" }}>
-                    {["Zone","Zone Name","Supply R²","RMSE (MLD)","Zone Type"].map(h => (
-                      <th key={h} style={{ padding:"10px 12px", textAlign:"left", color:C.supply, fontFamily:"monospace", fontSize:10, letterSpacing:1 }}>{h}</th>
+                  <tr style={{ borderBottom: "1px solid rgba(0,212,255,0.2)" }}>
+                    {["Date", "Supply MLD", "Consumption MLD", "Leakage MLD", "Leakage %"].map(h => (
+                      <th key={h} style={{ padding: "10px 12px", textAlign: "left", color: C.supply, fontFamily: "monospace", fontSize: 10, letterSpacing: 1 }}>{h}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
-                  {metrics.map((row,i) => {
-                    const type  = row.Ward_No>=21 ? (row.Ward_No===26?"MIDC":row.Ward_No===27?"Village":"CIDCO") : "PMC Ward";
-                    const typeC = row.Ward_No>=21 ? (row.Ward_No===26?C.warning:row.Ward_No===27?"#a855f7":C.consumption) : C.supply;
+                  {wardData.map((row, i) => {
+                    const lv = row.Leakage_Percentage >= 20 ? "CRITICAL" : row.Leakage_Percentage >= 15 ? "HIGH" : row.Leakage_Percentage >= 10 ? "MODERATE" : "NORMAL";
+                    const lc = lv === "CRITICAL" ? "#ff2d55" : lv === "HIGH" ? C.leakage : lv === "MODERATE" ? C.warning : C.consumption;
                     return (
-                      <tr key={i} style={{ borderBottom:"1px solid rgba(255,255,255,0.04)", background:i%2?C.surface2:"transparent" }}>
-                        <td style={{ padding:"9px 12px", fontFamily:"monospace", color:C.muted }}>{row.Ward_No}</td>
-                        <td style={{ padding:"9px 12px", fontWeight:600 }}>{row.Ward_Name}</td>
-                        <td style={{ padding:"9px 12px", color:row.Supply_R2>=0.97?C.consumption:C.warning, fontWeight:600 }}>{row.Supply_R2?.toFixed?.(4) ?? row.Supply_R2}</td>
-                        <td style={{ padding:"9px 12px", color:C.muted, fontFamily:"monospace" }}>{row.Supply_RMSE?.toFixed?.(4) ?? row.Supply_RMSE}</td>
-                        <td style={{ padding:"9px 12px" }}>
-                          <span style={{ background:`${typeC}18`, color:typeC, padding:"2px 8px", borderRadius:3, fontSize:10, border:`1px solid ${typeC}44`, fontWeight:700 }}>{type}</span>
+                      <tr key={i} style={{ borderBottom: "1px solid rgba(255,255,255,0.04)", background: i % 2 ? C.surface2 : "transparent" }}>
+                        <td style={{ padding: "9px 12px", fontFamily: "monospace", color: C.muted }}>{row.Date}</td>
+                        <td style={{ padding: "9px 12px", color: C.supply,      fontWeight: 600 }}>{row.Predicted_Supply_MLD}</td>
+                        <td style={{ padding: "9px 12px", color: C.consumption, fontWeight: 600 }}>{row.Predicted_Consumption_MLD}</td>
+                        <td style={{ padding: "9px 12px", color: C.leakage,     fontWeight: 600 }}>{row.Predicted_Leakage_MLD}</td>
+                        <td style={{ padding: "9px 12px" }}>
+                          <span style={{ background: `${lc}18`, color: lc, padding: "2px 8px", borderRadius: 3, fontFamily: "monospace", border: `1px solid ${lc}44` }}>
+                            {row.Leakage_Percentage}%
+                          </span>
                         </td>
                       </tr>
                     );
@@ -1213,164 +1283,458 @@ function Dashboard({ tab, setTab }) {
         )
       )}
 
+      {/* ─────── HISTORICAL TAB ─────── */}
+      {tab === "historical" && (
+        loading.hist ? <Spinner /> : historical.length === 0 ? <Spinner /> : (
+          <>
+            <h3 style={{ marginBottom: 14 }}>Historical City Data — Sep 2025 to Feb 2026</h3>
+            <div style={{ background: C.surface, borderRadius: 10, padding: "clamp(12px,3vw,20px)", border: "1px solid rgba(0,212,255,0.1)", marginBottom: 24 }}>
+              <ResponsiveContainer width="100%" height={320}>
+                <AreaChart data={historical}>
+                  <defs>
+                    <linearGradient id="hS" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%"  stopColor={C.supply} stopOpacity={0.3} />
+                      <stop offset="95%" stopColor={C.supply} stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid stroke="rgba(255,255,255,0.04)" />
+                  <XAxis dataKey="Date" tick={{ fill: C.muted, fontSize: 10 }} tickLine={false} interval={14} />
+                  <YAxis tick={{ fill: C.muted, fontSize: 11 }} tickLine={false} unit=" MLD" />
+                  <Tooltip content={<CustomTooltip />} />
+                  <Legend wrapperStyle={{ color: C.muted, fontSize: 12 }} />
+                  <Area type="monotone" dataKey="Water_Supplied_MLD" stroke={C.supply}      fill="url(#hS)" strokeWidth={2} name="Supply"      dot={false} />
+                  <Area type="monotone" dataKey="Water_Consumed_MLD" stroke={C.consumption} fill="none"      strokeWidth={2} name="Consumption" dot={false} />
+                  <Area type="monotone" dataKey="Leakage_MLD"        stroke={C.leakage}     fill="none"      strokeWidth={1.5} name="Leakage"  dot={false} />
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
+          </>
+        )
+      )}
+
+      {/* ─────── METRICS TAB ─────── */}
+      {tab === "metrics" && (
+        loading.metrics ? <Spinner /> : (
+          <>
+            <h2 style={{ margin: "0 0 4px", fontSize: "clamp(1.1rem,3vw,1.3rem)", fontWeight: 800 }}>📊 Model Performance</h2>
+            <p style={{ color: C.muted, fontSize: 13, marginBottom: 20 }}>
+              Gradient Boosting on daily differences · Train/test split 80/20 chronological
+            </p>
+            <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 24 }}>
+              <KpiCard label="City Supply R²"      value={summary.Model_Accuracy?.City_Supply_R2}      color={C.supply}      sub="Gradient Boosting" />
+              <KpiCard label="City Consumption R²" value={summary.Model_Accuracy?.City_Consumption_R2} color={C.consumption} />
+              <KpiCard label="City Supply RMSE"    value={summary.Model_Accuracy?.City_Supply_RMSE ? `${Number(summary.Model_Accuracy.City_Supply_RMSE).toFixed(4)} MLD` : null} color={C.leakage} />
+              <KpiCard label="Total Zones"         value="27 Zones"                                    color={C.warning} />
+            </div>
+
+            {/* R² bar chart */}
+            <div style={{ background: C.surface, borderRadius: 10, padding: "clamp(12px,3vw,20px)", marginBottom: 20, border: "1px solid rgba(0,212,255,0.1)" }}>
+              <h3 style={{ margin: "0 0 14px", fontSize: 13, color: "#ccd6f6" }}>Supply R² by Zone (27 total)</h3>
+              <ResponsiveContainer width="100%" height={240}>
+                <BarChart data={metrics} margin={{ bottom: 50 }}>
+                  <CartesianGrid stroke="rgba(255,255,255,0.04)" />
+                  <XAxis dataKey="Ward_Name" tick={{ fill: C.muted, fontSize: 9 }} tickLine={false} angle={-40} textAnchor="end" interval={0} />
+                  <YAxis domain={[0.95, 1]} tick={{ fill: C.muted, fontSize: 10 }} tickLine={false} />
+                  <Tooltip contentStyle={{ background: C.surface2, border: "1px solid rgba(0,212,255,0.2)", borderRadius: 8, fontSize: 12 }} labelStyle={{ color: "white" }} />
+                  <Bar dataKey="Supply_R2" fill={C.supply} name="Supply R²" radius={[3, 3, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+
+            {/* Metrics table */}
+            <div style={{ overflowX: "auto", background: C.surface, borderRadius: 8, border: "1px solid rgba(0,212,255,0.1)", WebkitOverflowScrolling: "touch", marginBottom: 20 }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12, minWidth: 550 }}>
+                <thead>
+                  <tr style={{ borderBottom: "1px solid rgba(0,212,255,0.2)" }}>
+                    {["Zone", "Zone Name", "Supply R²", "Supply RMSE", "Zone Type"].map(h => (
+                      <th key={h} style={{ padding: "10px 12px", textAlign: "left", color: C.supply, fontFamily: "monospace", fontSize: 10, letterSpacing: 1 }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {metrics.map((row, i) => {
+                    const zoneType  = row.Ward_No >= 21 ? (row.Ward_No === 26 ? "MIDC" : row.Ward_No === 27 ? "Village" : "CIDCO") : "PMC Ward";
+                    const typeColor = row.Ward_No >= 21 ? (row.Ward_No === 26 ? C.warning : row.Ward_No === 27 ? "#a855f7" : C.consumption) : C.supply;
+                    return (
+                      <tr key={i} style={{ borderBottom: "1px solid rgba(255,255,255,0.04)", background: i % 2 ? C.surface2 : "transparent" }}>
+                        <td style={{ padding: "9px 12px", fontFamily: "monospace", color: C.muted }}>{row.Ward_No}</td>
+                        <td style={{ padding: "9px 12px", fontWeight: 600 }}>{row.Ward_Name}</td>
+                        <td style={{ padding: "9px 12px", color: row.Supply_R2 >= 0.97 ? C.consumption : C.warning, fontWeight: 600, fontFamily: "monospace" }}>{row.Supply_R2?.toFixed?.(4) ?? row.Supply_R2}</td>
+                        <td style={{ padding: "9px 12px", color: C.muted, fontFamily: "monospace" }}>{row.Supply_RMSE?.toFixed?.(4) ?? row.Supply_RMSE}</td>
+                        <td style={{ padding: "9px 12px" }}>
+                          <span style={{ background: `${typeColor}18`, color: typeColor, padding: "2px 8px", borderRadius: 3, fontSize: 10, border: `1px solid ${typeColor}44`, fontWeight: 700 }}>
+                            {zoneType}
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Methodology */}
+            <div style={{ background: C.surface, border: "1px solid rgba(0,194,255,0.12)", borderRadius: 8, padding: "clamp(16px,3vw,24px)" }}>
+              <h3 style={{ margin: "0 0 12px", fontSize: 13, color: C.supply }}>📝 Model Methodology</h3>
+              <p style={{ color: C.muted, fontSize: 13, lineHeight: 1.7, margin: 0 }}>
+                <b style={{ color: "white" }}>Algorithm:</b> Gradient Boosting Regressor · 200–300 estimators · learning rate 0.05–0.08<br />
+                <b style={{ color: "white" }}>Key Insight:</b> Rolling prediction uses last 14 days as lag features — enables 1 to 365-day forecasting with maintained accuracy<br />
+                <b style={{ color: "white" }}>Features:</b> 18 features — lag_1 to lag_14, diff_1, diff_7, rolling_mean_7, rolling_mean_14, rolling_std_7, day_of_year, day_of_week, month<br />
+                <b style={{ color: "white" }}>Validation:</b> Chronological 85/15 train/test split · TimeSeriesSplit 5-fold CV<br />
+                <b style={{ color: "white" }}>Data:</b> 181 days × 27 zones = 4,887 records (Sep 2025 – Feb 2026) · 20 PMC wards + 7 CIDCO/MIDC/Village zones · ~211 MLD total
+              </p>
+            </div>
+          </>
+        )
+      )}
+
       {/* ─────── ANALYTICS TAB ─────── */}
       {tab === "analytics" && (
         <div>
           {cityData.length === 0 && wardData.length === 0 ? (
-            <div style={{ textAlign:"center", color:"#6a8aaa", padding:60 }}>
-              <div style={{ fontSize:48, marginBottom:16 }}>📈</div>
-              <h3 style={{ color:"white", marginBottom:8 }}>Analytics Dashboard</h3>
-              <p style={{ fontSize:13 }}>Run a City or Ward prediction first to see insights here.</p>
-            </div>
-          ) : (
-            <>
-              {/* Summary from latest prediction */}
-              {cityData.length > 0 && (
-                <>
-                  <h3 style={{ marginBottom:14, color:"#ccd6f6" }}>Latest City Forecast Summary</h3>
-                  <div style={{ display:"flex", gap:14, flexWrap:"wrap", marginBottom:28 }}>
-                    <KpiCard label="Avg Predicted Supply"      value={(cityData.reduce((a,r)=>a+r.Predicted_Supply_MLD,0)/cityData.length).toFixed(2)}      unit="MLD" color="#00c2ff" />
-                    <KpiCard label="Avg Predicted Consumption" value={(cityData.reduce((a,r)=>a+r.Predicted_Consumption_MLD,0)/cityData.length).toFixed(2)}  unit="MLD" color="#00ff88" />
-                    <KpiCard label="Avg Predicted Leakage"     value={(cityData.reduce((a,r)=>a+r.Predicted_Leakage_MLD,0)/cityData.length).toFixed(2)}      unit="MLD" color="#ff4d6d" />
-                    <KpiCard label="Avg Leakage %"             value={(cityData.reduce((a,r)=>a+r.Leakage_Percentage,0)/cityData.length).toFixed(1)}          unit="%" color="#ffb800" />
-                    <KpiCard label="Forecast Days"             value={cityData.length}                                                                         color="#00c2ff" sub="Days predicted" />
-                  </div>
-                </>
-              )}
-              {wardData.length > 0 && (
-                <>
-                  <h3 style={{ marginBottom:14, color:"#ccd6f6" }}>Latest Zone Forecast Summary</h3>
-                  <div style={{ display:"flex", gap:14, flexWrap:"wrap", marginBottom:28 }}>
-                    <KpiCard label="Zone"         value={wardData[0]?.Ward_Name}                                                                               color="#00c2ff" />
-                    <KpiCard label="Avg Supply"   value={(wardData.reduce((a,r)=>a+r.Predicted_Supply_MLD,0)/wardData.length).toFixed(4)}   unit="MLD" color="#00c2ff" />
-                    <KpiCard label="Avg Leakage"  value={(wardData.reduce((a,r)=>a+r.Predicted_Leakage_MLD,0)/wardData.length).toFixed(4)}  unit="MLD" color="#ff4d6d" />
-                    <KpiCard label="Leakage %"    value={wardData[0]?.Leakage_Percentage}                                                   unit="%" color="#ffb800" />
-                    <KpiCard label="Forecast Days" value={wardData.length}                                                                                     color="#00ff88" sub="Days predicted" />
-                  </div>
-                </>
-              )}
-
-              {/* ── INSIGHTS BOX ── */}
-              <div style={{
-                marginTop: 8,
-                background: "#0d1a2b",
-                border: "1px solid rgba(0,212,255,0.15)",
-                borderRadius: 12,
-                padding: "28px 28px 24px",
-              }}>
-                {/* Header */}
-                <div style={{ marginBottom: 22 }}>
-                  <div style={{
-                    display: "inline-block",
-                    background: "rgba(0,212,255,0.08)",
-                    border: "1px solid rgba(0,212,255,0.25)",
-                    color: "#00c2ff", fontSize: 10,
-                    fontFamily: "monospace", letterSpacing: 3,
-                    padding: "4px 12px", borderRadius: 2, marginBottom: 10,
-                  }}>DASHBOARD INSIGHTS</div>
-                  <h3 style={{ margin:0, fontSize:"1.05rem", fontWeight:800, color:"white" }}>
-                    What This Dashboard Tells You
-                  </h3>
-                  <p style={{ color:"#6a8aaa", fontSize:12, margin:"5px 0 0 0" }}>
-                    5 key features and 5 known limitations of the Water Management Analytics system
-                  </p>
-                </div>
-
-                <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:20 }}>
-
-                  {/* LEFT — 5 FEATURES */}
-                  <div style={{
-                    background: "rgba(0,255,136,0.04)",
-                    border: "1px solid rgba(0,255,136,0.2)",
-                    borderLeft: "4px solid #00ff88",
-                    borderRadius: 8, padding: "18px 20px",
-                  }}>
-                    <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:16 }}>
-                      <span style={{ fontSize:17 }}>✅</span>
-                      <span style={{ color:"#00ff88", fontWeight:800, fontSize:12, letterSpacing:1 }}>
-                        WHAT THIS DASHBOARD SHOWS
-                      </span>
-                    </div>
-                    {[
-                      { icon:"💧", title:"City-Wide Supply Forecast",      desc:"Predicts total daily water supplied across all 27 Panvel zones (avg ~211 MLD) for up to 365 days using Gradient Boosting ML." },
-                      { icon:"📍", title:"Zone-Level Leakage Detection",   desc:"Shows individual leakage % for each of the 27 zones (PMC wards, CIDCO sectors, MIDC, villages) vs the official 9.52% PMC benchmark." },
-                      { icon:"📅", title:"181 Days of Historical Trends",  desc:"Displays actual supply, consumption and leakage from Sep 2025 – Feb 2026 aligned with the IIT Bombay PMC ESR 2024-25 report." },
-                      { icon:"🤖", title:"High-Accuracy ML (R² = 0.9802)", desc:"29 Gradient Boosting models trained on 18 lag and calendar features achieve 98% prediction accuracy at city level." },
-                      { icon:"🔔", title:"Smart Leakage Alert Classification", desc:"Automatically classifies every zone as CRITICAL ≥20%, HIGH ≥15%, MODERATE ≥10%, or NORMAL <10% after each prediction scan." },
-                    ].map((f, i) => (
-                      <div key={i} style={{
-                        display:"flex", gap:11, marginBottom:i<4?13:0,
-                        paddingBottom:i<4?13:0,
-                        borderBottom:i<4?"1px solid rgba(0,255,136,0.1)":"none",
-                      }}>
-                        <span style={{ fontSize:17, flexShrink:0, marginTop:1 }}>{f.icon}</span>
-                        <div>
-                          <div style={{ color:"white", fontWeight:700, fontSize:12, marginBottom:3 }}>{f.title}</div>
-                          <div style={{ color:"#6a8aaa", fontSize:11, lineHeight:1.6 }}>{f.desc}</div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-
-                  {/* RIGHT — 5 LIMITATIONS */}
-                  <div style={{
-                    background: "rgba(255,77,109,0.04)",
-                    border: "1px solid rgba(255,77,109,0.2)",
-                    borderLeft: "4px solid #ff4d6d",
-                    borderRadius: 8, padding: "18px 20px",
-                  }}>
-                    <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:16 }}>
-                      <span style={{ fontSize:17 }}>⚠️</span>
-                      <span style={{ color:"#ff4d6d", fontWeight:800, fontSize:12, letterSpacing:1 }}>
-                        KNOWN LIMITATIONS
-                      </span>
-                    </div>
-                    {[
-                      { icon:"📡", title:"No Live IoT Sensor Data",             desc:"All values are generated from official PMC PDF aggregate figures using a mathematical model — not from real-time pipe sensors or smart meters." },
-                      { icon:"📉", title:"Accuracy Drops Beyond 180 Days",      desc:"Rolling prediction error compounds for long forecasts as the model feeds its own outputs as inputs, dropping R² from 0.98 to ~0.89." },
-                      { icon:"🌧️", title:"Weather and Events Not Included",     desc:"Rainfall, monsoon surges, droughts and pipe bursts are not factored in. Sudden supply changes due to dam overflow are not detectable." },
-                      { icon:"🏘️", title:"Leakage Rate Fixed at 9.52%",        desc:"The 9.52% is the official annual average from IIT Bombay ESR 2024-25. Actual daily per-zone leakage varies and is not tracked live." },
-                      { icon:"😴", title:"Server Cold Start Delay (Free Tier)", desc:"The backend API sleeps after 15 min of inactivity on Render free tier. First request after idle takes 30–60 seconds to wake up." },
-                    ].map((f, i) => (
-                      <div key={i} style={{
-                        display:"flex", gap:11, marginBottom:i<4?13:0,
-                        paddingBottom:i<4?13:0,
-                        borderBottom:i<4?"1px solid rgba(255,77,109,0.1)":"none",
-                      }}>
-                        <span style={{ fontSize:17, flexShrink:0, marginTop:1 }}>{f.icon}</span>
-                        <div>
-                          <div style={{ color:"white", fontWeight:700, fontSize:12, marginBottom:3 }}>{f.title}</div>
-                          <div style={{ color:"#6a8aaa", fontSize:11, lineHeight:1.6 }}>{f.desc}</div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-
-                </div>
-
-                {/* Bottom data source note */}
-                <div style={{
-                  marginTop: 16, padding: "10px 14px",
-                  background: "rgba(0,212,255,0.04)",
-                  border: "1px solid rgba(0,212,255,0.1)",
-                  borderRadius: 6, display:"flex", alignItems:"center", gap:10,
-                }}>
-                  <span style={{ fontSize:13 }}>📋</span>
-                  <span style={{ color:"#6a8aaa", fontSize:11 }}>
-                    <span style={{ color:"#00c2ff", fontWeight:700 }}>Data Source: </span>
-                    PMC Environmental Status Report 2024-25 · IIT Bombay ESED · Dr. Abhishek Chakraborty ·
-                    27 Zones · 4,887 Records · 181 Days (Sep 2025 – Feb 2026)
-                  </span>
-                </div>
-
+            <div style={{ textAlign: "center", color: C.muted, padding: "60px 20px" }}>
+              <div style={{ fontSize: 56, marginBottom: 16 }}>📊</div>
+              <h3 style={{ color: "white", marginBottom: 8, fontSize: "1.2rem" }}>Analytics Dashboard</h3>
+              <p style={{ fontSize: 13, marginBottom: 28 }}>Run a City or Ward prediction first to unlock live analytics, charts, and insights.</p>
+              <div style={{ display: "flex", gap: 12, justifyContent: "center" }}>
+                <button onClick={() => setTab("city")} style={{
+                  background: "rgba(0,212,255,0.12)", border: "1px solid rgba(0,212,255,0.4)",
+                  color: C.supply, padding: "11px 28px", borderRadius: 6,
+                  fontWeight: 700, fontSize: 13, cursor: "pointer", letterSpacing: 1,
+                }}>🏙 City Forecast</button>
+                <button onClick={() => setTab("ward")} style={{
+                  background: "rgba(0,255,136,0.1)", border: "1px solid rgba(0,255,136,0.3)",
+                  color: C.consumption, padding: "11px 28px", borderRadius: 6,
+                  fontWeight: 700, fontSize: 13, cursor: "pointer", letterSpacing: 1,
+                }}>🏘 Ward Forecast</button>
               </div>
-            </>
-          )}
+            </div>
+          ) : (() => {
+            const src        = cityData.length > 0 ? cityData : wardData;
+            const isCityMode = cityData.length > 0;
+            const sample     = isCityMode ? sampleCity : sampleWard;
+            const totalSupply  = src.reduce((a,r) => a + r.Predicted_Supply_MLD, 0);
+            const totalConsume = src.reduce((a,r) => a + r.Predicted_Consumption_MLD, 0);
+            const totalLeakage = src.reduce((a,r) => a + r.Predicted_Leakage_MLD, 0);
+            const avgLeakPct   = src.reduce((a,r) => a + r.Leakage_Percentage, 0) / src.length;
+            const maxSupply    = Math.max(...src.map(r => r.Predicted_Supply_MLD));
+            const minSupply    = Math.min(...src.map(r => r.Predicted_Supply_MLD));
+            const critDays     = src.filter(r => r.Leakage_Percentage >= 20).length;
+            const highDays     = src.filter(r => r.Leakage_Percentage >= 15 && r.Leakage_Percentage < 20).length;
+            const modDays      = src.filter(r => r.Leakage_Percentage >= 10 && r.Leakage_Percentage < 15).length;
+            const normalDays   = src.filter(r => r.Leakage_Percentage < 10).length;
+            const efficiency   = ((totalConsume / totalSupply) * 100).toFixed(1);
+            const r2Score      = summary.Model_Accuracy?.City_Supply_R2 || 0.98;
+
+            const pieDist = [
+              { name: "Consumed", value: parseFloat((totalConsume / totalSupply * 100).toFixed(1)), color: C.consumption },
+              { name: "Leakage",  value: parseFloat((totalLeakage / totalSupply * 100).toFixed(1)), color: C.leakage },
+            ];
+            const pieAlerts = [
+              { name: "Normal",   value: normalDays, color: C.consumption },
+              { name: "Moderate", value: modDays,    color: C.warning },
+              { name: "High",     value: highDays,   color: C.leakage },
+              { name: "Critical", value: critDays,   color: "#ff2d55" },
+            ].filter(d => d.value > 0);
+            const radialData = [{ name: "R\u00b2", value: parseFloat((r2Score * 100).toFixed(1)), fill: C.supply }];
+            const weeklyAvg = [];
+            const chunkSize = Math.max(1, Math.floor(src.length / 7));
+            for (let i = 0; i < Math.min(src.length, 7 * chunkSize); i += chunkSize) {
+              const chunk = src.slice(i, i + chunkSize);
+              weeklyAvg.push({
+                week: `W${weeklyAvg.length + 1}`,
+                Supply:      parseFloat((chunk.reduce((a,r)=>a+r.Predicted_Supply_MLD,0)/chunk.length).toFixed(2)),
+                Consumption: parseFloat((chunk.reduce((a,r)=>a+r.Predicted_Consumption_MLD,0)/chunk.length).toFixed(2)),
+                Leakage:     parseFloat((chunk.reduce((a,r)=>a+r.Predicted_Leakage_MLD,0)/chunk.length).toFixed(2)),
+              });
+            }
+            const CustomPieTip = ({ active, payload }) => {
+              if (!active || !payload?.length) return null;
+              return (
+                <div style={{ background: C.surface2, border: "1px solid rgba(0,212,255,0.2)", borderRadius: 8, padding: "10px 14px", fontSize: 12 }}>
+                  <span style={{ color: payload[0].payload.color, fontWeight: 700 }}>{payload[0].name}: </span>
+                  <span style={{ color: "white" }}>{payload[0].value}{payload[0].name === "Normal" || payload[0].name === "Critical" || payload[0].name === "Moderate" || payload[0].name === "High" ? " days" : "%"}</span>
+                </div>
+              );
+            };
+
+            return (
+              <>
+                {/* ── SECTION HEADER ── */}
+                <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:24, flexWrap:"wrap", gap:12 }}>
+                  <div style={{ display:"flex", alignItems:"center", gap:12 }}>
+                    <div style={{ width:4, height:28, background:`linear-gradient(180deg,${C.supply},${C.consumption})`, borderRadius:2 }} />
+                    <div>
+                      <h2 style={{ margin:0, fontSize:"1.1rem", fontWeight:800, color:"white" }}>
+                        {isCityMode ? `🏙 City Analytics — ${src.length}-Day Forecast` : `🏘 Zone Analytics — ${wardData[0]?.Ward_Name} · ${src.length} Days`}
+                      </h2>
+                      <p style={{ margin:0, color:C.muted, fontSize:12 }}>
+                        {isCityMode ? `${cityData[0]?.Date} → ${cityData[cityData.length-1]?.Date}` : `Ward ${wardData[0]?.Ward_No} · ${wardData.length}-day prediction`}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* ── ROW 1: 5 STAT CARDS ── */}
+                <div style={{ display:"grid", gridTemplateColumns:"repeat(5,1fr)", gap:12, marginBottom:20 }}>
+                  {[
+                    { label:"Avg Supply",     value:avgOf(src,"Predicted_Supply_MLD"),      unit:"MLD", color:C.supply,      icon:"💧", sub:`Max ${maxSupply.toFixed(1)} MLD` },
+                    { label:"Avg Consumption",value:avgOf(src,"Predicted_Consumption_MLD"), unit:"MLD", color:C.consumption, icon:"🚰", sub:`${efficiency}% efficiency` },
+                    { label:"Avg Leakage",    value:avgOf(src,"Predicted_Leakage_MLD"),     unit:"MLD", color:C.leakage,     icon:"⚡", sub:`${avgLeakPct.toFixed(1)}% of supply` },
+                    { label:"Model R²",       value:r2Score,                                unit:"",    color:C.supply,      icon:"🤖", sub:"Gradient Boosting" },
+                    { label:"Forecast Days",  value:src.length,                             unit:"d",   color:C.warning,     icon:"📅", sub:`${critDays} critical days` },
+                  ].map((s,i) => (
+                    <div key={i} style={{
+                      background:`linear-gradient(135deg,${C.surface} 0%,${C.surface2} 100%)`,
+                      border:"1px solid rgba(0,212,255,0.12)", borderTop:`3px solid ${s.color}`,
+                      borderRadius:10, padding:"16px 14px", boxShadow:"0 4px 20px rgba(0,0,0,0.3)",
+                    }}>
+                      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start" }}>
+                        <div style={{ color:C.muted, fontSize:9, letterSpacing:1.5, textTransform:"uppercase", marginBottom:8 }}>{s.label}</div>
+                        <span style={{ fontSize:18, opacity:0.8 }}>{s.icon}</span>
+                      </div>
+                      <div style={{ color:s.color, fontSize:"1.5rem", fontWeight:700, fontFamily:"monospace", lineHeight:1 }}>
+                        {s.value}<span style={{ fontSize:"0.7rem", marginLeft:3 }}>{s.unit}</span>
+                      </div>
+                      <div style={{ color:C.muted, fontSize:10, marginTop:6 }}>{s.sub}</div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* ── ROW 2: Area chart + Water distribution pie ── */}
+                <div style={{ display:"grid", gridTemplateColumns:"2fr 1fr", gap:16, marginBottom:16 }}>
+                  <div style={{ background:C.surface, borderRadius:12, padding:"20px 20px 14px", border:"1px solid rgba(0,212,255,0.1)" }}>
+                    <div style={{ marginBottom:14 }}>
+                      <div style={{ color:"white", fontWeight:700, fontSize:13 }}>📈 Supply vs Consumption Trend</div>
+                      <div style={{ color:C.muted, fontSize:11 }}>Predicted MLD over forecast period</div>
+                    </div>
+                    <ResponsiveContainer width="100%" height={220}>
+                      <AreaChart data={sample}>
+                        <defs>
+                          <linearGradient id="agS" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="5%"  stopColor={C.supply}      stopOpacity={0.35}/>
+                            <stop offset="95%" stopColor={C.supply}      stopOpacity={0}/>
+                          </linearGradient>
+                          <linearGradient id="agC" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="5%"  stopColor={C.consumption} stopOpacity={0.25}/>
+                            <stop offset="95%" stopColor={C.consumption} stopOpacity={0}/>
+                          </linearGradient>
+                        </defs>
+                        <CartesianGrid stroke="rgba(255,255,255,0.04)"/>
+                        <XAxis dataKey="Date" tick={{fill:C.muted,fontSize:10}} tickLine={false} interval={Math.floor(sample.length/6)}/>
+                        <YAxis tick={{fill:C.muted,fontSize:10}} tickLine={false} unit=" MLD" width={58}/>
+                        <Tooltip content={<CustomTooltip/>}/>
+                        <Legend wrapperStyle={{color:C.muted,fontSize:11}}/>
+                        <Area type="monotone" dataKey="Predicted_Supply_MLD"      stroke={C.supply}      fill="url(#agS)" strokeWidth={2.5} name="Supply"      dot={false}/>
+                        <Area type="monotone" dataKey="Predicted_Consumption_MLD" stroke={C.consumption} fill="url(#agC)" strokeWidth={2.5} name="Consumption" dot={false}/>
+                      </AreaChart>
+                    </ResponsiveContainer>
+                  </div>
+
+                  <div style={{ background:C.surface, borderRadius:12, padding:"20px 16px 14px", border:"1px solid rgba(0,212,255,0.1)" }}>
+                    <div style={{ marginBottom:10 }}>
+                      <div style={{ color:"white", fontWeight:700, fontSize:13 }}>🥧 Water Distribution</div>
+                      <div style={{ color:C.muted, fontSize:11 }}>% of total supply volume</div>
+                    </div>
+                    <ResponsiveContainer width="100%" height={155}>
+                      <PieChart>
+                        <Pie data={pieDist} cx="50%" cy="50%" innerRadius={42} outerRadius={68} dataKey="value" paddingAngle={4} stroke="none">
+                          {pieDist.map((d,i) => <Cell key={i} fill={d.color}/>)}
+                        </Pie>
+                        <Tooltip content={<CustomPieTip/>}/>
+                      </PieChart>
+                    </ResponsiveContainer>
+                    <div style={{ display:"flex", flexDirection:"column", gap:7, marginTop:4 }}>
+                      {pieDist.map((d,i) => (
+                        <div key={i} style={{ display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+                          <div style={{ display:"flex", alignItems:"center", gap:7 }}>
+                            <div style={{ width:10, height:10, borderRadius:2, background:d.color }}/>
+                            <span style={{ color:C.muted, fontSize:11 }}>{d.name}</span>
+                          </div>
+                          <span style={{ color:d.color, fontWeight:700, fontFamily:"monospace", fontSize:12 }}>{d.value}%</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                {/* ── ROW 3: Grouped weekly bar + Alert days donut ── */}
+                <div style={{ display:"grid", gridTemplateColumns:"3fr 2fr", gap:16, marginBottom:16 }}>
+                  <div style={{ background:C.surface, borderRadius:12, padding:"20px 20px 14px", border:"1px solid rgba(0,212,255,0.1)" }}>
+                    <div style={{ marginBottom:14 }}>
+                      <div style={{ color:"white", fontWeight:700, fontSize:13 }}>📊 Weekly Average Comparison</div>
+                      <div style={{ color:C.muted, fontSize:11 }}>Supply · Consumption · Leakage grouped by week</div>
+                    </div>
+                    <ResponsiveContainer width="100%" height={210}>
+                      <BarChart data={weeklyAvg} barGap={2}>
+                        <CartesianGrid stroke="rgba(255,255,255,0.04)"/>
+                        <XAxis dataKey="week" tick={{fill:C.muted,fontSize:11}} tickLine={false}/>
+                        <YAxis tick={{fill:C.muted,fontSize:10}} tickLine={false} unit=" MLD" width={58}/>
+                        <Tooltip content={<CustomTooltip/>}/>
+                        <Legend wrapperStyle={{color:C.muted,fontSize:11}}/>
+                        <Bar dataKey="Supply"      fill={C.supply}      name="Supply"      radius={[3,3,0,0]}/>
+                        <Bar dataKey="Consumption" fill={C.consumption} name="Consumption" radius={[3,3,0,0]}/>
+                        <Bar dataKey="Leakage"     fill={C.leakage}     name="Leakage"     radius={[3,3,0,0]}/>
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+
+                  <div style={{ background:C.surface, borderRadius:12, padding:"20px 16px 14px", border:"1px solid rgba(0,212,255,0.1)" }}>
+                    <div style={{ marginBottom:10 }}>
+                      <div style={{ color:"white", fontWeight:700, fontSize:13 }}>🚨 Alert Days Breakdown</div>
+                      <div style={{ color:C.muted, fontSize:11 }}>Days by leakage severity level</div>
+                    </div>
+                    <ResponsiveContainer width="100%" height={155}>
+                      <PieChart>
+                        <Pie data={pieAlerts} cx="50%" cy="50%" innerRadius={38} outerRadius={65} dataKey="value" paddingAngle={4} stroke="none">
+                          {pieAlerts.map((d,i) => <Cell key={i} fill={d.color}/>)}
+                        </Pie>
+                        <Tooltip content={<CustomPieTip/>}/>
+                      </PieChart>
+                    </ResponsiveContainer>
+                    <div style={{ display:"flex", flexWrap:"wrap", gap:"5px 12px", marginTop:6 }}>
+                      {pieAlerts.map((d,i) => (
+                        <div key={i} style={{ display:"flex", alignItems:"center", gap:5 }}>
+                          <div style={{ width:8, height:8, borderRadius:2, background:d.color }}/>
+                          <span style={{ color:C.muted, fontSize:10 }}>{d.name}</span>
+                          <span style={{ color:d.color, fontWeight:700, fontFamily:"monospace", fontSize:10 }}>{d.value}d</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                {/* ── ROW 4: Severity bar + Radial gauge ── */}
+                <div style={{ display:"grid", gridTemplateColumns:"3fr 1fr", gap:16, marginBottom:16 }}>
+                  <div style={{ background:C.surface, borderRadius:12, padding:"20px 20px 14px", border:"1px solid rgba(0,212,255,0.1)" }}>
+                    <div style={{ marginBottom:14 }}>
+                      <div style={{ color:"white", fontWeight:700, fontSize:13 }}>🔴 Leakage Forecast — Severity Coloured</div>
+                      <div style={{ color:C.muted, fontSize:11 }}>
+                        <span style={{color:"#ff2d55"}}>■ Critical ≥20%</span>{"  "}
+                        <span style={{color:C.leakage}}>■ High ≥15%</span>{"  "}
+                        <span style={{color:C.warning}}>■ Moderate ≥10%</span>{"  "}
+                        <span style={{color:C.consumption}}>■ Normal &lt;10%</span>
+                      </div>
+                    </div>
+                    <ResponsiveContainer width="100%" height={190}>
+                      <BarChart data={sample}>
+                        <CartesianGrid stroke="rgba(255,255,255,0.04)"/>
+                        <XAxis dataKey="Date" tick={{fill:C.muted,fontSize:10}} tickLine={false} interval={Math.floor(sample.length/8)}/>
+                        <YAxis tick={{fill:C.muted,fontSize:10}} tickLine={false} unit=" MLD" width={58}/>
+                        <ReferenceLine y={parseFloat(avgOf(src,"Predicted_Leakage_MLD"))} stroke="rgba(255,184,0,0.4)" strokeDasharray="4 3" label={{value:"avg",fill:C.warning,fontSize:9}}/>
+                        <Tooltip content={<CustomTooltip/>}/>
+                        <Bar dataKey="Predicted_Leakage_MLD" name="Leakage" radius={[3,3,0,0]}>
+                          {sample.map((r,i) => (
+                            <Cell key={i} fill={r.Leakage_Percentage>=20?"#ff2d55":r.Leakage_Percentage>=15?C.leakage:r.Leakage_Percentage>=10?C.warning:C.consumption}/>
+                          ))}
+                        </Bar>
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+
+                  <div style={{ background:C.surface, borderRadius:12, padding:"20px 14px 14px", border:"1px solid rgba(0,212,255,0.1)", display:"flex", flexDirection:"column", alignItems:"center" }}>
+                    <div style={{ color:"white", fontWeight:700, fontSize:13, textAlign:"center", marginBottom:2 }}>🎯 Model Accuracy</div>
+                    <div style={{ color:C.muted, fontSize:11, marginBottom:6, textAlign:"center" }}>R² Score (city level)</div>
+                    <div style={{ position:"relative", width:"100%" }}>
+                      <ResponsiveContainer width="100%" height={150}>
+                        <RadialBarChart cx="50%" cy="80%" innerRadius="55%" outerRadius="90%" startAngle={180} endAngle={0} data={radialData}>
+                          <RadialBar background={{fill:"rgba(255,255,255,0.05)"}} dataKey="value" cornerRadius={6} fill={C.supply}/>
+                        </RadialBarChart>
+                      </ResponsiveContainer>
+                      <div style={{ position:"absolute", bottom:12, left:"50%", transform:"translateX(-50%)", textAlign:"center" }}>
+                        <div style={{ color:C.supply, fontSize:"1.5rem", fontWeight:800, fontFamily:"monospace", lineHeight:1 }}>
+                          {(r2Score*100).toFixed(1)}%
+                        </div>
+                        <div style={{ color:C.muted, fontSize:10, marginTop:3 }}>accuracy</div>
+                      </div>
+                    </div>
+                    <div style={{ display:"flex", flexDirection:"column", gap:7, width:"100%", marginTop:8 }}>
+                      {[
+                        {label:"City R²", value:r2Score,  color:C.supply},
+                        {label:"Zones",   value:"27",     color:C.consumption},
+                        {label:"Records", value:"4,887",  color:C.warning},
+                      ].map((s,i) => (
+                        <div key={i} style={{ display:"flex", justifyContent:"space-between", padding:"5px 10px", background:"rgba(255,255,255,0.03)", borderRadius:5 }}>
+                          <span style={{ color:C.muted, fontSize:10 }}>{s.label}</span>
+                          <span style={{ color:s.color, fontWeight:700, fontFamily:"monospace", fontSize:11 }}>{s.value}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                {/* ── ROW 5: Leakage % line with benchmark ── */}
+                <div style={{ background:C.surface, borderRadius:12, padding:"20px 20px 14px", border:"1px solid rgba(0,212,255,0.1)", marginBottom:16 }}>
+                  <div style={{ marginBottom:14, display:"flex", justifyContent:"space-between", alignItems:"center", flexWrap:"wrap", gap:8 }}>
+                    <div>
+                      <div style={{ color:"white", fontWeight:700, fontSize:13 }}>📉 Leakage % Over Time</div>
+                      <div style={{ color:C.muted, fontSize:11 }}>Daily leakage % vs PMC benchmark 9.52%</div>
+                    </div>
+                    <div style={{ display:"flex", gap:14 }}>
+                      {[
+                        {label:`${critDays} Critical`,  color:"#ff2d55"},
+                        {label:`${highDays} High`,      color:C.leakage},
+                        {label:`${modDays} Moderate`,   color:C.warning},
+                        {label:`${normalDays} Normal`,  color:C.consumption},
+                      ].map((b,i) => (
+                        <div key={i} style={{ display:"flex", alignItems:"center", gap:5 }}>
+                          <div style={{ width:10, height:10, borderRadius:2, background:b.color }}/>
+                          <span style={{ color:C.muted, fontSize:10 }}>{b.label}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  <ResponsiveContainer width="100%" height={180}>
+                    <AreaChart data={sample}>
+                      <defs>
+                        <linearGradient id="agL" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%"  stopColor={C.leakage} stopOpacity={0.3}/>
+                          <stop offset="95%" stopColor={C.leakage} stopOpacity={0}/>
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid stroke="rgba(255,255,255,0.04)"/>
+                      <XAxis dataKey="Date" tick={{fill:C.muted,fontSize:10}} tickLine={false} interval={Math.floor(sample.length/8)}/>
+                      <YAxis tick={{fill:C.muted,fontSize:10}} tickLine={false} unit="%" width={44}/>
+                      <ReferenceLine y={9.52} stroke="rgba(255,184,0,0.5)" strokeDasharray="6 3"
+                        label={{value:"9.52% PMC benchmark",fill:C.warning,fontSize:9,position:"insideTopLeft"}}/>
+                      <Tooltip content={<CustomTooltip/>}/>
+                      <Area type="monotone" dataKey="Leakage_Percentage" stroke={C.leakage} fill="url(#agL)" strokeWidth={2} name="Leakage %" dot={false}/>
+                    </AreaChart>
+                  </ResponsiveContainer>
+                </div>
+
+                {/* ── ROW 6: 4 summary stat cards ── */}
+                <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:12, marginBottom:8 }}>
+                  {[
+                    { icon:"🏆", label:"Peak Supply Day",  value:src.reduce((b,r)=>r.Predicted_Supply_MLD>b.Predicted_Supply_MLD?r:b,src[0])?.Date||"—", sub:`${maxSupply.toFixed(2)} MLD`, color:C.supply },
+                    { icon:"📉", label:"Lowest Supply Day", value:src.reduce((l,r)=>r.Predicted_Supply_MLD<l.Predicted_Supply_MLD?r:l,src[0])?.Date||"—", sub:`${minSupply.toFixed(2)} MLD`, color:C.warning },
+                    { icon:"💦", label:"Total Supply",      value:`${totalSupply.toFixed(1)} MLD`, sub:`${src.length}-day cumulative`, color:C.supply },
+                    { icon:"⚡", label:"Total Leakage",     value:`${totalLeakage.toFixed(1)} MLD`, sub:`${avgLeakPct.toFixed(2)}% avg rate`, color:C.leakage },
+                  ].map((s,i) => (
+                    <div key={i} style={{
+                      background:C.surface, border:"1px solid rgba(0,212,255,0.1)",
+                      borderBottom:`3px solid ${s.color}`, borderRadius:10, padding:"14px 16px",
+                    }}>
+                      <div style={{ display:"flex", gap:8, alignItems:"center", marginBottom:8 }}>
+                        <span style={{ fontSize:18 }}>{s.icon}</span>
+                        <span style={{ color:C.muted, fontSize:9, letterSpacing:1, textTransform:"uppercase" }}>{s.label}</span>
+                      </div>
+                      <div style={{ color:s.color, fontWeight:700, fontSize:"1rem", fontFamily:"monospace" }}>{s.value}</div>
+                      <div style={{ color:C.muted, fontSize:10, marginTop:4 }}>{s.sub}</div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* ── INSIGHTS BOX ── */}
+                <InsightsBox />
+              </>
+            );
+          })()}
         </div>
       )}
 
-      {/* Footer — same as original */}
-      <div style={{ marginTop:60, textAlign:"center", color:C.muted, fontSize:11, fontFamily:"monospace", letterSpacing:1 }}>
+      {/* Footer */}
+      <div style={{ marginTop: 60, textAlign: "center", color: C.muted, fontSize: 11, fontFamily: "monospace", letterSpacing: 1 }}>
         WATER MANAGEMENT ANALYTICS · PMC ESR 2024-25 · GRADIENT BOOSTING + FLASK + REACT
       </div>
     </div>
@@ -1378,12 +1742,18 @@ function Dashboard({ tab, setTab }) {
 }
 
 // ─────────────────────────────────────────────────────────────
-// ROOT — auth gate → login/signup → dashboard
+// ROOT
 // ─────────────────────────────────────────────────────────────
 function AppInner() {
-  const { user, ready }         = useAuth();
+  const { user, ready }        = useAuth();
   const [authMode, setAuthMode] = useState("login");
-  const [tab, setTab]           = useState("city");
+  const [tab,      setTab]      = useState("city");
+
+  // Lifted prediction state — survives tab switches
+  const [cityData,     setCityData]     = useState([]);
+  const [wardData,     setWardData]     = useState([]);
+  const [days,         setDays]         = useState(7);
+  const [selectedWard, setSelectedWard] = useState(1);
 
   if (!ready) return null;
 
@@ -1394,10 +1764,16 @@ function AppInner() {
   }
 
   return (
-    <div style={{ background:C.bg, minHeight:"100vh", color:"white", fontFamily:"'Syne',sans-serif" }}>
+    <div style={{ background: C.bg, minHeight: "100vh", color: "white", fontFamily: "'Syne', sans-serif" }}>
       <style>{GLOBAL_CSS}</style>
       <Navbar tab={tab} setTab={setTab} />
-      <Dashboard key={tab} tab={tab} setTab={setTab} />
+      <Dashboard
+        tab={tab}           setTab={setTab}
+        cityData={cityData} setCityData={setCityData}
+        wardData={wardData} setWardData={setWardData}
+        days={days}         setDays={setDays}
+        selectedWard={selectedWard} setSelectedWard={setSelectedWard}
+      />
     </div>
   );
 }
