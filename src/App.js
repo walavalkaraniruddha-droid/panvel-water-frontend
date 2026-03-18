@@ -915,7 +915,7 @@ function UploadPage() {
       setStatus({ ok: true, msg: `✅ Uploaded — ${r.data.rows} rows, ${r.data.columns?.join(", ")}` });
       setFile(null); setDesc("");
     } catch (e) {
-      setStatus({ ok: false, msg: e.response?.data?.error || "Upload failed" });
+      setStatus({ ok: false, msg: `Upload failed (${e.response?.status || "network"}): ${e.response?.data?.error || e.message}` });
     } finally { setLoading(false); }
   };
 
