@@ -594,6 +594,21 @@ const CustomTooltip = ({ active, payload, label }) => {
 function Navbar({ tab, setTab, unread }) {
   const { user, logout } = useAuth();
   const isAdmin = user?.role === "admin";
+  const [clock, setClock] = React.useState("");
+  React.useEffect(() => {
+    const tick = () => {
+      const now = new Date();
+      const ist = new Date(now.getTime() + (5.5 * 60 * 60 * 1000));
+      const h = String(ist.getUTCHours()).padStart(2, "0");
+      const m = String(ist.getUTCMinutes()).padStart(2, "0");
+      const s = String(ist.getUTCSeconds()).padStart(2, "0");
+      const day = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"][ist.getUTCDay()];
+      setClock(`${day} ${h}:${m}:${s} IST`);
+    };
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, []);
 
   const NAV_ITEMS = [
     { id: "city",       label: "🏙 City"       },
@@ -603,6 +618,7 @@ function Navbar({ tab, setTab, unread }) {
     { id: "analytics",  label: "📈 Analytics"  },
     { id: "alerts",     label: "🔔 Alerts"     },
     { id: "datafiles",  label: "📁 Data Files" },
+    { id: "about",      label: "ℹ️ About"      },
     ...(isAdmin ? [
       { id: "upload", label: "⬆ Upload" },
       { id: "users",  label: "👥 Users"  },
@@ -672,6 +688,13 @@ function Navbar({ tab, setTab, unread }) {
               }}>{unread > 99 ? "99+" : unread}</span>
             )}
           </button>
+
+          {/* Live IST Clock */}
+          <div style={{
+            color: "#8899aa", fontSize: 10, fontFamily: "monospace",
+            background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)",
+            padding: "4px 8px", borderRadius: 4, letterSpacing: 0.5,
+          }}>{clock}</div>
 
           {/* Role badge */}
           <div style={{
@@ -778,6 +801,12 @@ function LoginPage({ onSwitchToSignup }) {
           <span onClick={onSwitchToSignup} style={{
             color: "#00c2ff", cursor: "pointer", fontWeight: 700,
           }}>Create one</span>
+        </p>
+        <p style={{ textAlign: "center", color: C.muted, fontSize: 12, marginTop: 10 }}>
+          Forgot password?{" "}
+          <span onClick={() => alert("Please contact your admin to reset your password.\n\nAdmin email: admin@gmail.com")} style={{
+            color: "#8899aa", cursor: "pointer", textDecoration: "underline",
+          }}>Reset password</span>
         </p>
       </div>
     </div>
@@ -1494,6 +1523,7 @@ function Dashboard({
   if (tab === "upload")    return isAdmin ? <UploadPage />    : null;
   if (tab === "users")     return isAdmin ? <UsersPage />     : null;
   if (tab === "datafiles") return <DataFilesPage />;
+  if (tab === "about")     return <AboutPage />;
   if (tab === "alerts")    return <AlertsPage days={days} />;
 
   return (
@@ -2232,6 +2262,153 @@ function Dashboard({
 
 // ─────────────────────────────────────────────────────────────
 // ROOT
+
+// ─────────────────────────────────────────────────────────────
+// ABOUT PAGE
+// ─────────────────────────────────────────────────────────────
+function AboutPage() {
+  const card = (icon, title, desc, color="#00c2ff") => (
+    <div style={{
+      background: "#0d1a2b", border: `1px solid ${color}33`,
+      borderRadius: 10, padding: "20px 22px", marginBottom: 14,
+    }}>
+      <div style={{ fontSize: 22, marginBottom: 8 }}>{icon}</div>
+      <div style={{ color: color, fontWeight: 700, fontSize: 14, marginBottom: 6 }}>{title}</div>
+      <div style={{ color: "#8899aa", fontSize: 13, lineHeight: 1.7 }}>{desc}</div>
+    </div>
+  );
+
+  const teamMember = (name, roll, role) => (
+    <div style={{
+      background: "#0d1a2b", border: "1px solid rgba(0,194,255,0.15)",
+      borderRadius: 10, padding: "18px 20px", textAlign: "center",
+      flex: "1 1 200px",
+    }}>
+      <div style={{ fontSize: 36, marginBottom: 8 }}>👨‍💻</div>
+      <div style={{ color: "white", fontWeight: 800, fontSize: 14 }}>{name}</div>
+      <div style={{ color: "#00c2ff", fontSize: 12, margin: "4px 0" }}>Roll No. {roll}</div>
+      <div style={{ color: "#8899aa", fontSize: 11 }}>{role}</div>
+    </div>
+  );
+
+  return (
+    <div style={{ padding: "32px 24px", maxWidth: 860, margin: "0 auto" }}>
+
+      {/* Header */}
+      <div style={{ textAlign: "center", marginBottom: 40 }}>
+        <div style={{ fontSize: 48, marginBottom: 12 }}>💧</div>
+        <h1 style={{ color: "#00c2ff", fontSize: "1.8rem", fontWeight: 800, margin: "0 0 8px",
+          textShadow: "0 0 30px rgba(0,194,255,0.4)" }}>
+          Water Management Analytics
+        </h1>
+        <p style={{ color: "#8899aa", fontSize: 14, margin: 0 }}>
+          AI-Powered Smart City Water Management Dashboard
+        </p>
+        <p style={{ color: "#8899aa", fontSize: 12, marginTop: 4 }}>
+          Panvel Municipal Corporation · 27 Zones · 211 MLD
+        </p>
+      </div>
+
+      {/* About Project */}
+      <h2 style={{ color: "white", fontSize: 16, fontWeight: 700, marginBottom: 16, borderBottom: "1px solid rgba(0,194,255,0.15)", paddingBottom: 10 }}>
+        📋 About the Project
+      </h2>
+      <div style={{ color: "#aabbcc", fontSize: 14, lineHeight: 1.8, marginBottom: 30 }}>
+        The Water Management Analytics Dashboard is an AI-powered full-stack smart city platform
+        built for the Panvel Municipal Corporation (PMC). It provides 1 to 365-day rolling forecasts
+        for water supply, consumption, and leakage across all 27 zones using 29 Gradient Boosting
+        Regression models trained on 181 days of ward-level data (Sep 2025 – Feb 2026) sourced from
+        the PMC Environmental Status Report 2024-25 (IIT Bombay ESED, Dr. Abhishek Chakraborty).
+        The platform achieves a city-level R² = 0.9802 with RMSE = 0.0461 MLD, matching the official
+        PMC leakage benchmark of 9.52% exactly.
+      </div>
+
+      {/* Team */}
+      <h2 style={{ color: "white", fontSize: 16, fontWeight: 700, marginBottom: 16, borderBottom: "1px solid rgba(0,194,255,0.15)", paddingBottom: 10 }}>
+        👨‍💻 Our Team
+      </h2>
+      <div style={{ display: "flex", gap: 14, flexWrap: "wrap", marginBottom: 30 }}>
+        {teamMember("Aniruddha Walavalkar", "3134", "Full Stack Developer")}
+        {teamMember("Labhesh Aiwale",       "3131", "ML Engineer")}
+        {teamMember("Rishabh Bade",         "3133", "Backend Developer")}
+      </div>
+
+      {/* Guide */}
+      <div style={{
+        background: "rgba(168,85,247,0.08)", border: "1px solid rgba(168,85,247,0.3)",
+        borderRadius: 10, padding: "18px 22px", marginBottom: 30, textAlign: "center",
+      }}>
+        <div style={{ fontSize: 28, marginBottom: 8 }}>🎓</div>
+        <div style={{ color: "#a855f7", fontWeight: 800, fontSize: 14 }}>Prof. Arjun Kadam</div>
+        <div style={{ color: "#8899aa", fontSize: 12, marginTop: 4 }}>Project Guide</div>
+        <div style={{ color: "#8899aa", fontSize: 12 }}>DKTE Society's Textile & Engineering Institute, Ichalkaranji</div>
+      </div>
+
+      {/* Tech Stack */}
+      <h2 style={{ color: "white", fontSize: 16, fontWeight: 700, marginBottom: 16, borderBottom: "1px solid rgba(0,194,255,0.15)", paddingBottom: 10 }}>
+        🛠 Tech Stack
+      </h2>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 30 }}>
+        {card("⚛️",  "Frontend",  "React 18 · Recharts · Axios · CSS-in-JS · PWA", "#00c2ff")}
+        {card("🐍",  "Backend",   "Flask 3.0 · Gunicorn · Flask-JWT-Extended · SQLite", "#00ff88")}
+        {card("🤖",  "ML Models", "29 GBR models (scikit-learn 1.7.2) · 18 features · Rolling prediction · R²=0.9802", "#ffb800")}
+        {card("☁️",  "Deployment","Frontend: Vercel (CI/CD) · Backend: Render.com · Python 3.11.4", "#a855f7")}
+      </div>
+
+      {/* Data Source */}
+      <h2 style={{ color: "white", fontSize: 16, fontWeight: 700, marginBottom: 16, borderBottom: "1px solid rgba(0,194,255,0.15)", paddingBottom: 10 }}>
+        📊 Data Source
+      </h2>
+      {card("🏛️", "PMC Environmental Status Report 2024-25",
+        "Prepared by ESED Department, IIT Bombay under Dr. Abhishek Chakraborty. Commissioned by Panvel Municipal Corporation. 27 zones · 4,887 records · 181 days · 9.52% official leakage benchmark.", "#ff4d6d")}
+
+      {/* Published Research */}
+      <h2 style={{ color: "white", fontSize: 16, fontWeight: 700, marginBottom: 16, borderBottom: "1px solid rgba(0,194,255,0.15)", paddingBottom: 10 }}>
+        📄 Published Research
+      </h2>
+      <div style={{
+        background: "#0d1a2b", border: "1px solid rgba(0,255,136,0.2)",
+        borderRadius: 10, padding: "20px 22px", marginBottom: 30,
+      }}>
+        <div style={{ color: "#00ff88", fontWeight: 700, fontSize: 13, marginBottom: 6 }}>
+          📰 IJARSCT — Volume 6, Issue 2, March 2026
+        </div>
+        <div style={{ color: "white", fontSize: 13, fontWeight: 600, marginBottom: 4 }}>
+          "Water Management Analytics: AI-Powered Smart City Water Management Dashboard"
+        </div>
+        <div style={{ color: "#8899aa", fontSize: 12 }}>
+          Paper ID: IJARSCT-2026-25729 · ISSN: 2581-9429 · Impact Factor: 8.2
+        </div>
+        <div style={{ color: "#8899aa", fontSize: 12, marginTop: 4 }}>
+          DOI: 10.48175/IJARSCT-2026-25729
+        </div>
+      </div>
+
+      {/* Live Links */}
+      <h2 style={{ color: "white", fontSize: 16, fontWeight: 700, marginBottom: 16, borderBottom: "1px solid rgba(0,194,255,0.15)", paddingBottom: 10 }}>
+        🔗 Live Links
+      </h2>
+      <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 30 }}>
+        {[
+          { label: "🌐 Live Dashboard", url: "https://panvel-water-frontend-cvpr.vercel.app", color: "#00c2ff" },
+          { label: "⚙️ API Endpoint",   url: "https://panvel-water-api.onrender.com",         color: "#00ff88" },
+        ].map(({ label, url, color }) => (
+          <a key={url} href={url} target="_blank" rel="noreferrer" style={{
+            background: `${color}11`, border: `1px solid ${color}44`,
+            color, borderRadius: 8, padding: "12px 20px",
+            textDecoration: "none", fontWeight: 700, fontSize: 13,
+            display: "flex", alignItems: "center", gap: 8,
+          }}>{label}</a>
+        ))}
+      </div>
+
+      <div style={{ textAlign: "center", color: "#8899aa", fontSize: 12, marginTop: 20, paddingTop: 20, borderTop: "1px solid rgba(255,255,255,0.06)" }}>
+        Made with 💙 by Team 31 · DKTE Society's Textile & Engineering Institute, Ichalkaranji · 2026
+      </div>
+    </div>
+  );
+}
+
 // ─────────────────────────────────────────────────────────────
 function AppInnerContent() {
   const { user, ready }        = useAuth();
