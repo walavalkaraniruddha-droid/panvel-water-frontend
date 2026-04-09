@@ -11,7 +11,7 @@ import {
 // ─────────────────────────────────────────────────────────────
 // CONFIG
 // ─────────────────────────────────────────────────────────────
-const API = process.env.REACT_APP_API_URL || "http://127.0.0.1:5000";
+const API = process.env.REACT_APP_API_URL || "https://panvel-water-api.onrender.com";
 
 const C = {
   supply:      "#00c2ff",
@@ -737,7 +737,7 @@ function LoginPage({ onSwitchToSignup }) {
     setError(""); setLoading(true);
     try {
       const r = await axios.post(`${API}/auth/login`, { email, password: pass });
-      login({ name: r.data.name, email: r.data.email, token: r.data.token, role: r.data.role || "student" });
+      login({ name: r.data.name, email: r.data.email, token: r.data.token, role: r.data.role || "user" });
     } catch (e) {
       setError(e.response?.data?.error || "Login failed");
     } finally { setLoading(false); }
@@ -822,7 +822,7 @@ function SignupPage({ onSwitchToLogin }) {
   const [email, setEmail] = useState("");
   const [pass,  setPass]  = useState("");
   const [pass2, setPass2] = useState("");
-  const [role,  setRole]  = useState("student");
+  const [role,  setRole]  = useState("user");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -879,7 +879,7 @@ function SignupPage({ onSwitchToLogin }) {
           <div style={{ color: C.muted, fontSize: 10, letterSpacing: 2, marginBottom: 10 }}>SELECT YOUR ROLE</div>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
             {[
-              { id: "student", icon: "👤", label: "User",     desc: "View analytics & download data",   border: C.supply,  bg: "rgba(0,194,255,0.08)"   },
+              { id: "user",    icon: "👤", label: "User",     desc: "View analytics & download data",   border: C.supply,  bg: "rgba(0,194,255,0.08)"   },
               { id: "admin",   icon: "⚙",  label: "Admin",    desc: "Upload files & manage data",       border: "#a855f7", bg: "rgba(168,85,247,0.08)" },
             ].map(r => (
               <div key={r.id} onClick={() => setRole(r.id)} style={{
@@ -1032,7 +1032,7 @@ function UsersPage() {
   }, [user]);
 
   const admins   = users.filter(u => u.role === "admin").length;
-  const students = users.filter(u => u.role === "student").length;
+  const students = users.filter(u => u.role !== "admin").length;
 
   return (
     <div style={{ padding: "28px 24px" }}>
